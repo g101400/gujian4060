@@ -32,7 +32,8 @@ TOKEN = load_token()
 
 
 def api(path, method='GET', data=None):
-    url = 'https://api.github.com/repos/%s/contents/%s' % (REPO, urllib.parse.quote(path, safe=''))
+    # path 为 /repos/{REPO}/ 之后的完整子路径（如 contents/foo 或 git/blobs/{sha}）
+    url = 'https://api.github.com/repos/%s/%s' % (REPO, urllib.parse.quote(path, safe='/,=:'),)
     body = json.dumps(data).encode('utf-8') if data is not None else None
     req = urllib.request.Request(url, data=body, method=method)
     req.add_header('Authorization', 'Bearer %s' % TOKEN)
@@ -44,6 +45,23 @@ def api(path, method='GET', data=None):
             return r.status, r.read().decode('utf-8', 'replace')
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode('utf-8', 'replace')
+
+
+def remote_content(path):
+    """取 GitHub 上某文件的原始字节。>1MB 的文件 contents API 不返回内联 content，
+    需改走 git blob API（用 contents 响应里的 blob sha 取真实内容），否则无法比对会导致无限重传。"""
+    st, body = api('contents/%s' % path)
+    if st != 200:
+        return st, None
+    info = json.loads(body)
+    if info.get('content'):
+        return 200, base64.b64decode(info['content'])
+    sha = info.get('sha')
+    if sha:
+        stb, bodyb = api('git/blobs/%s' % sha)
+        if stb == 200:
+            return 200, base64.b64decode(json.loads(bodyb).get('content', ''))
+    return st, None
 
 
 # --cached --others --exclude-standard：同时枚举「已追踪 + 未追踪且未被忽略」文件，
@@ -62,23 +80,20 @@ for f in files:
         raw = fh.read()
     b64 = base64.b64encode(raw).decode('ascii')
     # 比对 GitHub 现有内容：不存在则新增；存在且内容相同则跳过；存在但不同则带 sha 更新
-    # （解码后比字节，避免 GitHub 返回的 base64 含折行换行符导致误判为「不同」）
-    st, body = api(f, 'GET')
+    # （remote_content 已处理 >1MB 大文件走 git blob API、以及 base64 折行，故字节级比对稳定幂等）
+    st, gh_raw = remote_content(f)
     if st == 200:
-        try:
-            remote = json.loads(body)
-            gh_raw = base64.b64decode(remote.get('content', ''))
-            if gh_raw == raw:
-                print('SKIP(未变) %s' % f)
-                skip += 1
-                continue
-            sha = remote.get('sha')
-        except Exception:
-            sha = None
+        if gh_raw == raw:
+            print('SKIP(未变) %s' % f)
+            skip += 1
+            continue
+        # 取 blob sha 用于更新
+        _, body = api('contents/%s' % f)
+        sha = json.loads(body).get('sha') if body else None
         payload = {'message': 'update %s' % f, 'content': b64}
         if sha:
             payload['sha'] = sha
-        st2, body2 = api(f, 'PUT', payload)
+        st2, body2 = api('contents/%s' % f, 'PUT', payload)
         if st2 in (200, 201):
             updated += 1
             print('UPDATE %s' % f)
@@ -91,7 +106,7 @@ for f in files:
                 msg = body2[:120]
             print('FAIL %s -> %s %s' % (f, st2, msg))
     elif st == 404:
-        st2, body2 = api(f, 'PUT', {'message': 'add %s' % f, 'content': b64})
+        st2, body2 = api('contents/%s' % f, 'PUT', {'message': 'add %s' % f, 'content': b64})
         if st2 in (200, 201):
             added += 1
             print('ADD  %s' % f)
