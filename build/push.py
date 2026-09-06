@@ -51,7 +51,7 @@ def api(path, method='GET', data=None):
 # -z 输出 NUL 分隔且为 UTF-8 原始字节，避免 Windows 控制台 GBK 编码导致中文路径错位
 out = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=ROOT)
 files = [f for f in out.decode('utf-8').split('\x00') if f]
-ok = fail = skip = 0
+added = updated = fail = skip = 0
 for f in files:
     p = os.path.join(ROOT, f)
     if not os.path.isfile(p):
@@ -60,23 +60,49 @@ for f in files:
         continue
     with open(p, 'rb') as fh:
         b64 = base64.b64encode(fh.read()).decode('ascii')
-    # 已存在则跳过（幂等），仅补齐缺失文件
+    # 比对 GitHub 现有内容：不存在则新增；存在且内容相同则跳过；存在但不同则带 sha 更新
+    # （内容比对保证「本地修改也能同步更新」，而非仅首次新增）
     st, body = api(f, 'GET')
     if st == 200:
-        print('SKIP(已存在) %s' % f)
-        skip += 1
-        continue
-    st2, body2 = api(f, 'PUT', {'message': 'add %s' % f, 'content': b64})
-    if st2 in (200, 201):
-        ok += 1
-        print('OK   %s' % f)
+        try:
+            remote = json.loads(body)
+            if remote.get('content') == b64 and remote.get('encoding', 'base64') == 'base64':
+                print('SKIP(未变) %s' % f)
+                skip += 1
+                continue
+            sha = remote.get('sha')
+        except Exception:
+            sha = None
+        payload = {'message': 'update %s' % f, 'content': b64}
+        if sha:
+            payload['sha'] = sha
+        st2, body2 = api(f, 'PUT', payload)
+        if st2 in (200, 201):
+            updated += 1
+            print('UPDATE %s' % f)
+        else:
+            fail += 1
+            msg = ''
+            try:
+                msg = json.loads(body2).get('message', '')
+            except Exception:
+                msg = body2[:120]
+            print('FAIL %s -> %s %s' % (f, st2, msg))
+    elif st == 404:
+        st2, body2 = api(f, 'PUT', {'message': 'add %s' % f, 'content': b64})
+        if st2 in (200, 201):
+            added += 1
+            print('ADD  %s' % f)
+        else:
+            fail += 1
+            msg = ''
+            try:
+                msg = json.loads(body2).get('message', '')
+            except Exception:
+                msg = body2[:120]
+            print('FAIL %s -> %s %s' % (f, st2, msg))
     else:
         fail += 1
-        msg = ''
-        try:
-            msg = json.loads(body2).get('message', '')
-        except Exception:
-            msg = body2[:120]
-        print('FAIL %s -> %s %s' % (f, st2, msg))
-print('\n完成：新增 %d / 跳过 %d / 失败 %d / 共 %d' % (ok, skip, fail, len(files)))
+        print('FAIL %s -> GET %s' % (f, st))
+print('\n完成：新增 %d / 更新 %d / 跳过 %d / 失败 %d / 共 %d' % (added, updated, skip, fail, len(files)))
 sys.exit(1 if fail else 0)
