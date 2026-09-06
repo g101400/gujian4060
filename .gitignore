@@ -1,0 +1,31 @@
+# ===== 密钥（本地真实值，绝不入库）=====
+secrets/config.local.js
+
+# ===== 构建产物 / 安装包 =====
+*.apk
+*.aab
+*.ipa
+*.deb
+*.exe
+*.msi
+*.zip
+releases/
+build/
+dist/
+out/
+
+# ===== 备份 / 日志 / 临时 =====
+*.bak
+*.bak*
+*.log
+.data.real.*
+*.apk_hold
+rel_extract*/
+
+# ===== 依赖 / 工具 =====
+node_modules/
+.thumbs/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
