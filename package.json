@@ -1,0 +1,10 @@
+{
+  "name": "gujian-daka",
+  "version": "2.3.0",
+  "productName": "古建景点打卡",
+  "description": "古建景点打卡（龙芯版·浏览器壳：地图打点/多照片/导入导出，支持离线）",
+  "homepage": "https://techpromo.cn/gujian-daka",
+  "build": {
+    "productName": "古建景点打卡"
+  }
+}
