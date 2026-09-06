@@ -10,7 +10,7 @@
 | `TIANDITU_SERVER_TOKEN` | 天地图服务端令牌（瓦片下载脚本） | `secrets/config.local.js` |
 | AI 厂商 Key | 智能问答（运行时） | 应用内 localStorage `ai_settings`，不入库 |
 | 网盘凭证（百度/夸克） | 导入导出 | 本机配置，不入库 |
-| 安卓签名 keystore | APK 签名 | `android_build/`（本地），不入库 |
+| 安卓签名 keystore | APK 签名 | `build/targets/keystore/`（本地，.gitignore），不入库 |
 
 ## 文件与加载机制
 
@@ -39,6 +39,12 @@
 ## 构建为什么带密钥
 
 本地构建以 `gujian_app` 为 www 根整体打包，`secrets/config.local.js` 随包进入发布物（APK / deb / exe / PWA），因此**本地生成的可部署文件包含真实密钥**；而该文件被 `.gitignore` 排除，**GitHub 上永远只有占位模板**。
+
+## 安卓发布签名（本地 keystore）
+
+- keystore 文件放本地 `build/targets/keystore/release.keystore`（`.gitignore` 排除），口令从环境变量 `GUJIAN_STORE_PW` / `GUJIAN_KEY_PW` 读取，不入库。
+- `build/targets/android/app/build.gradle`：检测到本地 keystore 才启用发布签名；否则自动降级 debug 签名。
+- 克隆后无 keystore → 构建出 debug 签名 APK（功能完整，仅非发布签名）；本地放入 keystore + 设环境变量即出发布签名 APK。
 
 ## 防覆盖保障
 
