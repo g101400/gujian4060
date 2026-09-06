@@ -45,7 +45,7 @@ UOS deb 打包脚本强制写 `!<arch>` 头（`build/verify_myml_ar.py` 可校�
 
 **本机不通 `github.com:443`**（`git push` / 克隆 / 网页端均连不上，关闭沙箱亦失败），但 `api.github.com` REST 可达。因此：
 
-- 常规 `git push` 在此环境不可用；代码经 **GitHub REST 内容 API** 推送（`D:/Users/WorkBuddy/push_gujian_api.py`），定时同步自动化也走此通道。
+- 常规 `git push` 在此环境不可用；代码经 **GitHub REST 内容 API** 推送（仓库内 `build/push.py`，路径相对化、可在任意机运行），定时同步自动化也走此通道。
 - 在能直连 `github.com` 的机器上，`git push` 同样可用（仓库、提交、remote 均已配好）。
 
 推送脚本要点：遍历 `git ls-files`（自动排除 .gitignore 的密钥与产物），逐个 PUT 到 `/repos/g101400/gujian4060/contents/`，幂等（存在则带 sha 更新）。
