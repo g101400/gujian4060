@@ -59,14 +59,16 @@ for f in files:
         skip += 1
         continue
     with open(p, 'rb') as fh:
-        b64 = base64.b64encode(fh.read()).decode('ascii')
+        raw = fh.read()
+    b64 = base64.b64encode(raw).decode('ascii')
     # 比对 GitHub 现有内容：不存在则新增；存在且内容相同则跳过；存在但不同则带 sha 更新
-    # （内容比对保证「本地修改也能同步更新」，而非仅首次新增）
+    # （解码后比字节，避免 GitHub 返回的 base64 含折行换行符导致误判为「不同」）
     st, body = api(f, 'GET')
     if st == 200:
         try:
             remote = json.loads(body)
-            if remote.get('content') == b64 and remote.get('encoding', 'base64') == 'base64':
+            gh_raw = base64.b64decode(remote.get('content', ''))
+            if gh_raw == raw:
                 print('SKIP(未变) %s' % f)
                 skip += 1
                 continue
