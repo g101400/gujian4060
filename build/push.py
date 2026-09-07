@@ -68,21 +68,24 @@ def api(path, method='GET', data=None, _tries=3):
     return last if isinstance(last, tuple) else (None, '')
 
 
-def remote_content(path):
-    """取 GitHub 上某文件的原始字节。>1MB 的文件 contents API 不返回内联 content，
-    需改走 git blob API（用 contents 响应里的 blob sha 取真实内容），否则无法比对会导致无限重传。"""
-    st, body = api('contents/%s' % path)
-    if st != 200:
+def local_blob_sha(relpath):
+    """用 git hash-object 计算本地文件的 blob SHA（与 GitHub contents 接口的 sha 同构，可做比对）"""
+    try:
+        return subprocess.check_output(['git', 'hash-object', '--', relpath], cwd=ROOT).decode('ascii').strip()
+    except Exception:
+        return None
+
+
+def remote_sha(relpath):
+    """取 GitHub 上某文件的 blob sha。contents 接口即使文件 >1MB 也会返回 sha，无需下载内容，
+    从而避免大文件字节比对导致的网络断流/超时（这正是此前 IncompleteRead 崩溃的根因）。"""
+    st, body = api('contents/%s' % relpath)
+    if st != 200 or not body:
         return st, None
-    info = json.loads(body)
-    if info.get('content'):
-        return 200, base64.b64decode(info['content'])
-    sha = info.get('sha')
-    if sha:
-        stb, bodyb = api('git/blobs/%s' % sha)
-        if stb == 200:
-            return 200, base64.b64decode(json.loads(bodyb).get('content', ''))
-    return st, None
+    try:
+        return 200, json.loads(body).get('sha')
+    except Exception:
+        return st, None
 
 
 # --cached --others --exclude-standard：同时枚举「已追踪 + 未追踪且未被忽略」文件，
@@ -100,24 +103,14 @@ for f in files:
     with open(p, 'rb') as fh:
         raw = fh.read()
     b64 = base64.b64encode(raw).decode('ascii')
-    # 比对 GitHub 现有内容：不存在则新增；存在且内容相同则跳过；存在但不同则带 sha 更新
-    # （remote_content 已处理 >1MB 大文件走 git blob API、以及 base64 折行，故字节级比对稳定幂等）
-    st, gh_raw = remote_content(f)
-    if st == 200:
-        if gh_raw == raw:
-            print('SKIP(未变) %s' % f)
-            skip += 1
-            continue
-        # 取 blob sha 用于更新
-        _, body = api('contents/%s' % f)
-        sha = json.loads(body).get('sha') if body else None
-        payload = {'message': 'update %s' % f, 'content': b64}
-        if sha:
-            payload['sha'] = sha
-        st2, body2 = api('contents/%s' % f, 'PUT', payload)
+    # 比对策略：用 git blob SHA 比对（远端 contents 返回的 sha 即 blob sha；本地用 git hash-object 计算）。
+    # 彻底避免下载 >1MB 大文件内容做字节比对，规避网络断流/超时导致的 IncompleteRead 崩溃。
+    st, rsha = remote_sha(f)
+    if st == 404:
+        st2, body2 = api('contents/%s' % f, 'PUT', {'message': 'add %s' % f, 'content': b64})
         if st2 in (200, 201):
-            updated += 1
-            print('UPDATE %s' % f)
+            added += 1
+            print('ADD  %s' % f)
         else:
             fail += 1
             msg = ''
@@ -126,11 +119,20 @@ for f in files:
             except Exception:
                 msg = body2[:120]
             print('FAIL %s -> %s %s' % (f, st2, msg))
-    elif st == 404:
-        st2, body2 = api('contents/%s' % f, 'PUT', {'message': 'add %s' % f, 'content': b64})
+    elif st == 200:
+        lsha = local_blob_sha(f)
+        if lsha and lsha == rsha:
+            print('SKIP(未变) %s' % f)
+            skip += 1
+            continue
+        # 内容变化：带远端 blob sha 更新（rsha 已是 contents 接口的 sha，无需二次 GET）
+        payload = {'message': 'update %s' % f, 'content': b64}
+        if rsha:
+            payload['sha'] = rsha
+        st2, body2 = api('contents/%s' % f, 'PUT', payload)
         if st2 in (200, 201):
-            added += 1
-            print('ADD  %s' % f)
+            updated += 1
+            print('UPDATE %s' % f)
         else:
             fail += 1
             msg = ''
