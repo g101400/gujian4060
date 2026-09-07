@@ -41,6 +41,10 @@ build/targets/ios/gujian_pwa/*
 *.apk_hold
 rel_extract*/
 
+# ===== Python 缓存（字节码，不入版本库）=====
+__pycache__/
+*.pyc
+
 # ===== 依赖 / 工具 =====
 node_modules/
 .thumbs/
