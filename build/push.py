@@ -8,7 +8,8 @@
 #   - ROOT 由本脚本位置推导（<repo>/build/push.py 的上级 = gujian_app 根），与机器无关
 #   - Token 优先级：环境变量 GITHUB_TOKEN / GH_TOKEN → 本地 token 文件（GITHUB_TOKEN_FILE 指定，默认 D:/Users/WorkBuddy/.github_token）
 #   - 枚举 git 追踪 + 未追踪(且未被忽略) 的全部文件，幂等上传（已存在则跳过）
-import os, sys, base64, json, subprocess, urllib.request, urllib.error, urllib.parse
+import os, sys, base64, json, subprocess, time, socket, http.client
+import urllib.request, urllib.error, urllib.parse
 
 # 仓库标识（古建单通道，g101400 账号下）
 REPO = 'g101400/gujian4060'
@@ -31,7 +32,7 @@ def load_token():
 TOKEN = load_token()
 
 
-def api(path, method='GET', data=None):
+def api(path, method='GET', data=None, _tries=3):
     # path 为 /repos/{REPO}/ 之后的完整子路径（如 contents/foo 或 git/blobs/{sha}）
     url = 'https://api.github.com/repos/%s/%s' % (REPO, urllib.parse.quote(path, safe='/,=:'),)
     body = json.dumps(data).encode('utf-8') if data is not None else None
@@ -40,11 +41,31 @@ def api(path, method='GET', data=None):
     req.add_header('Accept', 'application/vnd.github+json')
     req.add_header('Content-Type', 'application/json')
     req.add_header('X-GitHub-Api-Version', '2022-11-28')
-    try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            return r.status, r.read().decode('utf-8', 'replace')
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode('utf-8', 'replace')
+    # 重试：覆盖大文件(>1MB)走 git/blobs 时的瞬时断流 IncompleteRead、5xx、URLError、socket 超时/错误
+    last = None
+    for attempt in range(_tries):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return r.status, r.read().decode('utf-8', 'replace')
+        except urllib.error.HTTPError as e:
+            code = e.code
+            try:
+                rb = e.read().decode('utf-8', 'replace')
+            except Exception:
+                rb = ''
+            # 5xx 服务端瞬时错误可重试；4xx（含 401/403/404）直接返回，重试无意义
+            if code >= 500 and attempt < _tries - 1:
+                time.sleep(2 * (attempt + 1))
+                last = (code, rb)
+                continue
+            return code, rb
+        except (http.client.IncompleteRead, urllib.error.URLError, socket.timeout, socket.error, ConnectionError) as e:
+            last = e
+            if attempt < _tries - 1:
+                time.sleep(2 * (attempt + 1))
+                continue
+            return None, ''
+    return last if isinstance(last, tuple) else (None, '')
 
 
 def remote_content(path):
