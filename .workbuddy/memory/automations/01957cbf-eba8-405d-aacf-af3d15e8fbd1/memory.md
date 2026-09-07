@@ -37,3 +37,12 @@
 - 清理：经 REST API 删除远端该 .pyc（DELETE 200）+ 本地 `rm -rf __pycache__`，并把 `__pycache__/`、`.pyc` 加入 `.gitignore`。
 - 提交 `.gitignore` + `push.py`（d001c0a），重跑 exit=0：新增 0 / 更新 10 / 跳过 103 / 失败 0（共 113）。第二轮更新含 .gitignore / build/push.py / 各端构建与文档。
 - 安全：`secrets/config.local.js` 与 `build/targets/keystore/` 始终被 .gitignore 排除，推送列表仅含 `secrets/config.js` 占位模板，密钥零外泄。
+
+## 2026-09-08 02:21 执行
+
+- 工作树：仅自动化 memory.md 一处未提交改动（上次运行遗留），`git add -A` 后 `git commit -m "sync: 自动同步本地改动 2026-09-08_02:21:46"`（1 文件，+9）。
+- 经 REST 内容 API 推送（`build/push.py`，托管 Python 3.13.12，后台约 1m29s 完成）。`GITHUB_TOKEN` 环境变量未设 → 回退读取 `D:/Users/WorkBuddy/.github_token`。
+- 枚举 `git ls-files --cached --others --exclude-standard` 共 114 个文件。
+- 结果：新增 0 / 更新 8 / 跳过(未变) 106 / 失败 0 / 共 114。退出码 0。
+- 更新 8 个：`.workbuddy/memory/automations/.../memory.md`、`build/targets/uos/package.json`、`build/verify/verify_popup.mjs`、`docs/README.md`、`docs/软件需求说明书.md`、`js/store.js`、`lib/leaflet.css`、`platform_matrix.js`。
+- 安全复核：`git ls-files` 枚举中不含 `secrets/config.local.js`、`build/targets/keystore/`、`__pycache__/*.pyc`；推送列表 secrets 项仅 `secrets/config.js` 占位模板，密钥零外泄。
