@@ -8,7 +8,7 @@
 #   - ROOT 由本脚本位置推导（<repo>/build/push.py 的上级 = gujian_app 根），与机器无关
 #   - Token 优先级：环境变量 GITHUB_TOKEN / GH_TOKEN → 本地 token 文件（GITHUB_TOKEN_FILE 指定，默认 D:/Users/WorkBuddy/.github_token）
 #   - 枚举 git 追踪 + 未追踪(且未被忽略) 的全部文件，幂等上传（已存在则跳过）
-import os, sys, base64, json, subprocess, time, socket, http.client
+import os, sys, base64, json, hashlib, subprocess, time, socket, http.client
 import urllib.request, urllib.error, urllib.parse
 
 # 仓库标识（古建单通道，g101400 账号下）
@@ -68,12 +68,16 @@ def api(path, method='GET', data=None, _tries=3):
     return last if isinstance(last, tuple) else (None, '')
 
 
-def local_blob_sha(relpath):
-    """用 git hash-object 计算本地文件的 blob SHA（与 GitHub contents 接口的 sha 同构，可做比对）"""
-    try:
-        return subprocess.check_output(['git', 'hash-object', '--', relpath], cwd=ROOT).decode('ascii').strip()
-    except Exception:
-        return None
+def git_blob_sha(data: bytes) -> str:
+    """计算 git blob sha1（与 GitHub 存储的 blob sha 一致），基于实际上传的原始字节。
+
+    注意：勿用 `git hash-object` 替代——受 core.autocrlf=true 影响其对 CRLF 文件返回
+    LF 归一化 sha，与 contents API 上传原始 CRLF 字节后 GitHub 计算的 sha 恒不等，
+    导致 CRLF 文件每轮同步都被误判为“已变化”而重复 UPDATE（噪音 commit）。
+    本实现与 shuili/shipin 版 build/push.py 同构。"""
+    h = hashlib.sha1()
+    h.update(b'blob ' + str(len(data)).encode() + b'\x00' + data)
+    return h.hexdigest()
 
 
 def remote_sha(relpath):
@@ -103,7 +107,8 @@ for f in files:
     with open(p, 'rb') as fh:
         raw = fh.read()
     b64 = base64.b64encode(raw).decode('ascii')
-    # 比对策略：用 git blob SHA 比对（远端 contents 返回的 sha 即 blob sha；本地用 git hash-object 计算）。
+    # 比对策略：用 git blob SHA 比对（远端 contents 返回的 sha 即 blob sha；
+    # 本地基于“即将上传的原始字节”计算，与远端同构——CRLF/LF 均不会误判）。
     # 彻底避免下载 >1MB 大文件内容做字节比对，规避网络断流/超时导致的 IncompleteRead 崩溃。
     st, rsha = remote_sha(f)
     if st == 404:
@@ -120,7 +125,7 @@ for f in files:
                 msg = body2[:120]
             print('FAIL %s -> %s %s' % (f, st2, msg))
     elif st == 200:
-        lsha = local_blob_sha(f)
+        lsha = git_blob_sha(raw)
         if lsha and lsha == rsha:
             print('SKIP(未变) %s' % f)
             skip += 1
