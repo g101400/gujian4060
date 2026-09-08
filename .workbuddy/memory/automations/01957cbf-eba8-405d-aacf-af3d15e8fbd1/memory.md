@@ -46,3 +46,12 @@
 - 结果：新增 0 / 更新 8 / 跳过(未变) 106 / 失败 0 / 共 114。退出码 0。
 - 更新 8 个：`.workbuddy/memory/automations/.../memory.md`、`build/targets/uos/package.json`、`build/verify/verify_popup.mjs`、`docs/README.md`、`docs/软件需求说明书.md`、`js/store.js`、`lib/leaflet.css`、`platform_matrix.js`。
 - 安全复核：`git ls-files` 枚举中不含 `secrets/config.local.js`、`build/targets/keystore/`、`__pycache__/*.pyc`；推送列表 secrets 项仅 `secrets/config.js` 占位模板，密钥零外泄。
+
+## 2026-09-08 05:24 执行
+
+- 工作树有改动：`git add -A` 后 `git commit -m "sync: 自动同步本地改动 2026-09-08_05:24:30"`（3 文件，+602/-11：自动化 memory.md、docs/软件需求说明书.md、新增未追踪 `docs/软件需求说明书.md._bak_20260908_0435` 备份）。
+- 经 REST 内容 API 推送（`build/push.py`，托管 Python 3.13.12，后台约 1m36s 完成）。`GITHUB_TOKEN` 环境变量未设 → 回退读取 `D:/Users/WorkBuddy/.github_token`（94 字节）。
+- 枚举 `git ls-files --cached --others --exclude-standard` 共 115 个文件。
+- 结果：新增 1 / 更新 9 / 跳过(未变) 105 / 失败 0 / 共 115。退出码 0。
+- 更新 9 个：docs/README.md、docs/软件变更文档.md、docs/软件需求说明书.md、js/store.js、lib/leaflet.css、platform_matrix.js 等；「新增 1」为需求文档的 `_bak_20260908_0435` 备份（非敏感，系本次 git add -A 一并纳入）。
+- 安全复核：推送列表 secrets 项仅 `secrets/config.js` 占位模板，`config.local.js` 与 `build/targets/keystore/` 始终被 .gitignore 排除，密钥零外泄。
