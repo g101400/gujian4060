@@ -83,6 +83,15 @@
 - 更新 8 个：`.workbuddy/memory/automations/.../memory.md`、`build/targets/uos/package.json`、`build/verify/verify_popup.mjs`、`docs/README.md`、`docs/软件需求说明书.md`、`js/store.js`、`lib/leaflet.css`、`platform_matrix.js`。
 - 安全复核：推送列表 secrets 项仅 `secrets/config.js` 占位模板（另 `SECRETS.md` 为说明文档），`config.local.js` 与 `build/targets/keystore/` 始终被 .gitignore 排除，密钥零外泄。
 
+## 2026-09-08 20:39 执行
+
+- 工作树：仅自动化 memory.md 一处未提交改动（上次运行遗留），`git add -A` 后 `git commit -m "sync: 自动同步本地改动 2026-09-08_20:39:16"`（1 文件，+9，提交 `912ff23`）。
+- 经 REST 内容 API 推送（`build/push.py`，托管 Python 3.13.12，`GITHUB_TOKEN` 环境变量未设 → 回退读取 `D:/Users/WorkBuddy/.github_token`，后台约 2m52s 完成）。
+- 枚举 `git ls-files --cached --others --exclude-standard` 共 115 个文件。
+- 结果：新增 0 / 更新 8 / 跳过(未变) 107 / 失败 0 / 共 115。退出码 0。
+- 更新 8 个：`.workbuddy/memory/automations/.../memory.md`、`build/targets/uos/package.json`、`build/verify/verify_popup.mjs`、`docs/README.md`、`docs/软件需求说明书.md`、`js/store.js`、`lib/leaflet.css`、`platform_matrix.js`。
+- 安全复核：推送列表 secrets 项仅 `secrets/config.js` 占位模板（另 `SECRETS.md` 为说明文档），`config.local.js` 与 `build/targets/keystore/` 始终被 .gitignore 排除，密钥零外泄。
+
 ## 2026-09-08 14:32 执行
 
 - 工作树：仅自动化 memory.md 一处未提交改动（上次运行遗留），`git add -A` 后 `git commit -m "sync: 自动同步本地改动 2026-09-08_14:32:48"`（1 文件，+9，提交 `3a6d8bf`）。
