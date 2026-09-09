@@ -3941,7 +3941,7 @@ function popupHtml(r) {
   })();
 
   // ---------- 启动 ----------
-  window.APP = { edit: openEdit, shareBuilding,   /* v2.4.3 修复：气泡「分享」按钮 onclick=\"APP.shareBuilding()\" 长期未导出 → 点击即 script error */ del, openPhoto, viewPhotos: openPhotoCycle, navigate, nearCenter, close: closeModal, back,
+  window.APP = { showAllParams, edit: openEdit, shareBuilding,   /* v2.4.3 修复：气泡「分享」按钮 onclick=\"APP.shareBuilding()\" 长期未导出 → 点击即 script error */ del, openPhoto, viewPhotos: openPhotoCycle, navigate, nearCenter, close: closeModal, back,
     openCheckin, openCheckinList, receivePhoto, receiveSheet, receiveDone, receiveError, receiveCancel, onExportResult };
   // v2.4.3：暴露 ai.js 依赖的全局 helper（三端一致），否则 AI 菜单 openModal is not defined → script error
   window.el = el;
