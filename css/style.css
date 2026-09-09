@@ -372,3 +372,17 @@ html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Seg
 .ctx-item:hover{background:var(--accent,#3da9fc);color:#fff}
 .ctx-ico{font-size:14px;line-height:1}
 .ctx-sep{height:1px;background:var(--line,#eee);margin:5px 2px}
+
+/* v2.4.9 子菜单隐藏/收藏按钮 */
+.menu-btn{position:relative}
+.macts{display:flex;gap:6px;margin-left:auto;flex:0 0 auto;align-items:center;padding-left:4px}
+.mact{width:30px;height:30px;line-height:30px;text-align:center;border-radius:9px;font-size:14px;
+  background:rgba(127,127,127,.16);border:1px solid rgba(127,127,127,.28);cursor:pointer;
+  -webkit-user-select:none;user-select:none;opacity:.9}
+.mact:active{transform:scale(.92);opacity:1}
+.mact.on{background:rgba(245,185,66,.24);border-color:#f5b942;color:#f5b942}
+.mact.hide{background:rgba(230,90,90,.16);border-color:rgba(230,90,90,.45)}
+.mact.disabled{opacity:.28}
+.macttg{margin-right:10px;font-size:15px;cursor:pointer;opacity:.75;-webkit-user-select:none;user-select:none}
+.macttg:active{opacity:1}
+@media (max-width:360px){.mact{width:26px;height:26px;line-height:26px;font-size:12px}}
