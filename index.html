@@ -102,7 +102,17 @@
     <button class="menu-btn" data-act="aiHistory"><span class="ico">🕘</span><span>查询历史<span class="sub">按时间保存·可重查</span></span></button>
     </div>
 
-    <div class="mgroup collapsible" data-grp="设置">设置<span class="tg">＋</span></div>
+        <div class="mgroup collapsible" data-grp="智能检索">智能检索<span class="tg">＋</span></div>
+    <div class="msub">
+    <button class="menu-btn" data-act="objParamSearch"><span class="ico">🔎</span><span>参数反查古建<span class="sub">按参数找对象 · 如宽度3米的闸门</span></span></button>
+    <button class="menu-btn" data-act="objStats"><span class="ico">📊</span><span>分类统计<span class="sub">类型数量统计 · Group By</span></span></button>
+    <button class="menu-btn" data-act="objTypeDef"><span class="ico">📘</span><span>类型定义入库<span class="sub">类型含义向量化 · 写入本地知识库</span></span></button>
+    <button class="menu-btn" data-act="objDocLink"><span class="ico">🔗</span><span>预案文档关联<span class="sub">切块关联对象 · 可查用途</span></span></button>
+    <button class="menu-btn" data-act="objReport"><span class="ico">📝</span><span>生成说明文档<span class="sub">小作文 · 导出Word可预览打印</span></span></button>
+    <button class="menu-btn" data-act="pdf2word"><span class="ico">📄</span><span>PDF 转 Word<span class="sub">文本层/OCR · 导出 doc</span></span></button>
+    </div>
+
+<div class="mgroup collapsible" data-grp="设置">设置<span class="tg">＋</span></div>
     <div class="msub">
     <button class="menu-btn" data-act="orgManager"><span class="ico">🏛️</span><span>机构与默认城市管理<span class="sub">省/城市 · 保存并全量同步</span></span></button>
     <button class="menu-btn" data-act="btypeManager"><span class="ico">🏷️</span><span>古建类型管理<span class="sub">增删改类型名称 · 级联同步</span></span></button>
@@ -195,5 +205,6 @@
 <script src="js/upgrade.js"></script>
 <!-- v2.4.3 图文笔记引擎：古建=游记 / 水利·感知=备忘录（必须在 upgrade.js 之后） -->
 <script src="js/journal.js"></script>
+<script src="js/objsearch.js"></script>
 </body>
 </html>
