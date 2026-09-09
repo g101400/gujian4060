@@ -118,3 +118,12 @@
 - 结果：新增 0 / 更新 8 / 跳过(未变) 107 / 失败 0 / 共 115。退出码 0。
 - 更新 8 个：`.workbuddy/memory/automations/.../memory.md`、`build/targets/uos/package.json`、`build/verify/verify_popup.mjs`、`docs/README.md`、`docs/软件需求说明书.md`、`js/store.js`、`lib/leaflet.css`、`platform_matrix.js`。
 - 安全复核：推送列表 secrets 项仅 `secrets/config.js` 占位模板（另 `SECRETS.md` 为说明文档），`config.local.js` 与 `build/targets/keystore/` 始终被 .gitignore 排除，密钥零外泄。
+
+## 2026-09-09 05:49 执行
+
+- 工作树有改动：`build/push.py`（坑 40 修复：用基于「即将上传原始字节」的 `git_blob_sha()` 替代受 `core.autocrlf=true` 影响的 `git hash-object`，CRLF 文件不再被误判为更新）+ 自动化 memory.md。`git add -A` 后 `git commit -m "sync: 自动同步本地改动 2026-09-09_05:49:09"`（2 文件，+23/-9，提交 `9cb533e`）。
+- 经 REST 内容 API 推送（`build/push.py`，托管 Python 3.13.12，`GITHUB_TOKEN` 环境变量未设 → 回退读取 `D:/Users/WorkBuddy/.github_token`，后台约 1m23s 完成）。
+- 枚举 `git ls-files --cached --others --exclude-standard` 共 115 个文件。
+- 结果：新增 0 / 更新 0 / 跳过(未变) 115 / 失败 0 / 共 115。退出码 0。
+- 关键验证：新比对逻辑下全部 115 文件均为「未变」——印证坑 40 修复生效，先前因 `git hash-object` LF 归一化导致的 CRLF 文件每轮伪更新噪音已消除。
+- 安全复核：推送列表 secrets 项仅 `secrets/config.js` 占位模板（另 `SECRETS.md` 为说明文档）；`config.local.js` 与 `build/targets/keystore/` 始终被 .gitignore 排除，密钥零外泄。
