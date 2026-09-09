@@ -1473,7 +1473,7 @@ function popupHtml(r) {
   function exportPhotosMenu() {
     const hasFilter = filter.city.length || filter.atype.length || filter.q;
     const recsAll = records, recsFiltered = records.filter(passFilter);
-    const html = `<div class="field"><label>导出范围</label>
+    const html = `<div class="hint" id="phStat" style="background:#eef4ff;color:#1e40af;border-radius:8px;padding:8px 10px;margin-bottom:10px">正在统计…</div>\n<div class="field"><label>导出范围</label>
         <select id="phScope"><option value="all">全部古建（${recsAll.length}）</option>${hasFilter ? `<option value="filtered" selected>当前筛选（${recsFiltered.length}）</option>` : ""}</select></div>
       <div class="field"><label>压缩格式</label>
         <select id="phFmt"><option value="zip">zip（推荐，通用）</option><option value="7z">7z（当前环境降级为 zip）</option></select></div>
@@ -1503,6 +1503,33 @@ function popupHtml(r) {
       <div class="hint">照片按所选层次分文件夹（默认「城市 / 古建_序号.扩展名」）；压缩包内含 manifest.json，可<b>确定性重新导入</b>（自动绑定到原古建，无需逐张人工选择）。</div>`;
     openModal("导出照片", html, `<button class="btn ghost" id="phCancel">取消</button><button class="btn primary" id="phGo">导出</button>`);
     el("phCancel").onclick = closeModal;
+    // ---------- v2.4.9-A 实时统计：将导出 N 个建筑物 / M 张照片（随范围与管理所勾选联动）----------
+    const phHasSrc = (p) => !!(p && (p.full || p.dataUrl || p.thumb || p.b64));
+    const phCount = (rs) => rs.reduce((n, r) => n + ((r.photos || []).filter(phHasSrc).length), 0);
+    const phStatUpdate = () => {
+      const box = document.getElementById("phStat"); if (!box) return;
+      const scopeEl = document.getElementById("phScope");
+      let rs = (scopeEl && scopeEl.value === "filtered") ? recsFiltered : recsAll;
+      const cbs = document.querySelectorAll("#phOffices .ofc-cb");
+      if (cbs && cbs.length) {
+        const checked = []; for (let i = 0; i < cbs.length; i++) if (cbs[i].checked) checked.push(cbs[i].value);
+        if (checked.length && checked.length < cbs.length) {
+          const want = checked.map((o) => (typeof normOffice === "function" ? normOffice(o) : o));
+          rs = rs.filter((r) => {
+            const v = typeof normOffice === "function" ? normOffice((typeof orgVal === "function" ? orgVal(r, "office") : r.office)) : r.office;
+            return want.indexOf(v) >= 0;
+          });
+        }
+      }
+      box.innerHTML = "将导出：<b>" + rs.length + "</b> 个对象 / <b>" + phCount(rs) + "</b> 张照片" +
+        (rs.length ? "" : "（可切换导出范围或勾选更多管理所）");
+    };
+    const phScopeEl = document.getElementById("phScope"); if (phScopeEl) phScopeEl.onchange = phStatUpdate;
+    const phCbs = document.querySelectorAll("#phOffices .ofc-cb");
+    for (let i = 0; i < phCbs.length; i++) phCbs[i].onchange = phStatUpdate;
+    phStatUpdate();
+    // ---------- /v2.4.9-A ----------
+
     // 组合段（v2.4）
     const segValOf = (r, seg) => seg === "city" ? citySafe(r.city) : seg === "province" ? (r.province || "")
       : seg === "atype" ? (r.atype || "") : (r.name || "");
@@ -1545,7 +1572,13 @@ function popupHtml(r) {
     const safe = (s) => (s || "古建").replace(/[\\/:*?"<>|\n\r]+/g, "_").slice(0, 40);
     const citySafe = (s) => (s || "未分类城市").replace(/[\\/:*?"<>|\n\r]+/g, "_").slice(0, 30);
     for (const r of recs) {
-      if (opts.offices && opts.offices.length && !opts.offices.includes(normCity(r.city))) continue; // v2.4：城市过滤
+      // ---------- v2.4.9-B 城市过滤双向归一化 ----------
+      if (opts.offices && opts.offices.length) {
+        const wantCJ = opts.offices.map((o) => normCity(o));
+        const vCJ = normCity(r.city);
+        if (wantCJ.indexOf(vCJ) < 0 && !(Array.isArray(r.city) && r.city.some((x) => wantCJ.indexOf(normCity(x)) >= 0))) continue;
+      }
+      // ---------- /v2.4.9-B ----------
       const phs = r.photos || [];
       for (let i = 0; i < phs.length; i++) {
         const ph = phs[i];
@@ -1561,11 +1594,16 @@ function popupHtml(r) {
           }
         }
         if (!b64) {
-          if (!ph.dataUrl || !ph.dataUrl.startsWith("data:")) continue;
-          const comma = ph.dataUrl.indexOf(",");
-          b64 = ph.dataUrl.substring(comma + 1);
-          const mime = ph.dataUrl.substring(5, ph.dataUrl.indexOf(";")).replace("/", ".");
-          ext = mime.includes("png") ? "png" : mime.includes("gif") ? "gif" : mime.includes("webp") ? "webp" : "jpg";
+          // ---------- v2.4.9-C 多字段兜底：full / dataUrl / thumb / b64 任一可用即导出 ----------
+          const src = [ph.dataUrl, ph.full, ph.thumb].filter((s) => s && String(s).startsWith("data:"))[0] || "";
+          if (src) {
+            const comma = src.indexOf(",");
+            b64 = src.substring(comma + 1);
+            const mime = src.substring(5, src.indexOf(";")).replace("/", ".");
+            ext = mime.includes("png") ? "png" : mime.includes("gif") ? "gif" : mime.includes("webp") ? "webp" : "jpg";
+          } else if (ph.b64) { b64 = ph.b64; ext = "jpg"; }
+          else continue;
+          // ---------- /v2.4.9-C ----------
         }
         // 按城市分文件夹：城市/古建_序号.ext
         const phName = `${citySafe(r.city)}/${safe(r.name)}_${i + 1}.${ext}`;
@@ -1578,7 +1616,7 @@ function popupHtml(r) {
       // v2.2 问题①根因防护：Web/PWA/UOS/Win 上"没有可导出照片"通常是导入未成功（照片数据从未落库），而非导出代码缺路径——给可操作指引而非只报一句。
       const plat = (window.AndroidBridge && window.AndroidBridge.exportFilesToTree) ? "安卓" : "当前平台（统信 UOS / Web / PWA / Win11）";
       return openModal("没有可导出照片",
-        `<div class="hint">所选范围内没有照片数据。</div>
+        `<div class="hint">所选范围内没有照片数据（范围内 <b>${recs.length}</b> 个对象，其中 <b>${recs.filter((r) => (r.photos || []).length).length}</b> 个带照片记录）。</div>
          <div class="hint">常见原因：在本平台<b>尚未成功导入照片</b>（照片数据未落库）。</div>
          <div class="hint">🟢 解决路径：<br>
          · 统信 UOS（内存仅 8G）：请用菜单「传输与共享 → 从安卓复制照片」做<b>目录流式导入</b>（免整包入内存，避免崩溃）；<br>
@@ -2513,7 +2551,13 @@ function popupHtml(r) {
       if (ph && ph.fullPath && window.AndroidBridge && window.AndroidBridge.loadFullImage) {
         try { const full = window.AndroidBridge.loadFullImage(ph.fullPath); if (full && full.startsWith("data:")) return resolve(full); } catch (e) {}
       }
-      resolve(ph ? (ph.dataUrl || "") : "");
+      // v2.4.9：兜底链 full → dataUrl → thumb；三者皆空时明确提示 + 入错误日志，不再白屏
+      const src = (ph && (ph.full || ph.dataUrl || ph.thumb)) || "";
+      if (!src) {
+        try { if (window.__ERR_LOG_PUSH__) window.__ERR_LOG_PUSH__("照片数据缺失（无可用图像源）：" + JSON.stringify({ cap: ph && ph.caption, keys: ph ? Object.keys(ph) : [] })); } catch (e) {}
+        try { if (typeof toast === "function") toast("该照片数据缺失（原始图像未随文件导入）"); } catch (e) {}
+      }
+      resolve(src);
     });
   }
   async function openPhoto(rid, pi) {
@@ -2782,6 +2826,119 @@ function popupHtml(r) {
     } catch (e) { return []; }
   }
   function saveHiddenMenus(a) { try { localStorage.setItem(HM_KEY, JSON.stringify(a)); } catch (e) {} }
+
+  // ---------- v2.4.9：子菜单「隐藏 / 收藏」按钮（带二次确认，防误点）----------
+  var MACT_PREF = HM_KEY + "_macts";
+  function mactsEnabled() { try { return localStorage.getItem(MACT_PREF) !== "0"; } catch (e) { return true; } }
+  function setMactsEnabled(on) { try { localStorage.setItem(MACT_PREF, on ? "1" : "0"); } catch (e) {} }
+  function isFavAct(a) { try { return loadQuickFavs().indexOf(a) >= 0; } catch (e) { return false; } }
+  function clearMenuActs(root) {
+    var as = (root || document).querySelectorAll(".macts");
+    for (var i = 0; i < as.length; i++) { if (as[i].parentNode) as[i].parentNode.removeChild(as[i]); }
+  }
+  // 同步已注入按钮的显示状态（收藏星标 / 保护项置灰）
+  function syncMacts(wrap, act) {
+    if (!wrap) return;
+    var cs = wrap.children || [];
+    for (var i = 0; i < cs.length; i++) {
+      var c = cs[i];
+      if (!c.classList) continue;
+      if (c.classList.contains("hide")) {
+        var prot = HM_PROTECT.indexOf(act) >= 0;
+        if (prot) { c.classList.add("disabled"); c.setAttribute("title", "该菜单是恢复入口，不允许隐藏"); }
+      } else {
+        var on = isFavAct(act);
+        if (on) c.classList.add("on"); else c.classList.remove("on");
+        c.setAttribute("title", on ? "移出快捷常用" : "加入快捷常用");
+        c.textContent = on ? "\u2605" : "\u2606";
+      }
+    }
+  }
+  // 给抽屉内每个子菜单注入「收藏 / 隐藏」按钮
+  function decorateMenuButtons() {
+    var root = (document.getElementById && document.getElementById("drawer")) || document;
+    if (!root || !root.querySelectorAll) return;
+    if (!mactsEnabled()) { clearMenuActs(root); return; }
+    var btns = root.querySelectorAll(".menu-btn");
+    for (var i = 0; i < btns.length; i++) (function (b) {
+      var act = b.dataset ? (b.dataset.act || "") : "";
+      if (!act) return;
+      if (b.classList && (b.classList.contains("pin") || b.classList.contains("qf-btn"))) return;
+      if (loadHiddenMenus().indexOf(act) >= 0) return;
+      var ex = b.querySelector ? b.querySelector(".macts") : null;
+      if (ex) { syncMacts(ex, act); return; }   // 已装饰过：只同步状态（收藏星标实时反映）
+      var prot = HM_PROTECT.indexOf(act) >= 0;
+      var wrap = document.createElement("span");
+      wrap.className = "macts";
+      var fav = document.createElement("span");
+      var on = isFavAct(act);
+      fav.className = "mact" + (on ? " on" : "");
+      fav.setAttribute("role", "button");
+      fav.setAttribute("title", on ? "移出快捷常用" : "加入快捷常用");
+      fav.textContent = on ? "\u2605" : "\u2606";
+      var hid = document.createElement("span");
+      hid.className = "mact hide" + (prot ? " disabled" : "");
+      hid.setAttribute("role", "button");
+      hid.setAttribute("title", prot ? "该菜单是恢复入口，不允许隐藏" : "隐藏此菜单");
+      hid.textContent = "\uD83D\uDEAB";
+      function stopProp(e) { if (e && e.stopPropagation) e.stopPropagation(); }
+      function onClick(e) { if (e && e.stopPropagation) e.stopPropagation(); if (e && e.preventDefault) e.preventDefault(); }
+      fav.addEventListener("click", function (e) { onClick(e); confirmFavMenu(act, b); });
+      fav.addEventListener("touchend", stopProp);
+      hid.addEventListener("click", function (e) { onClick(e); confirmHideMenu(act, b); });
+      hid.addEventListener("touchend", stopProp);
+      wrap.appendChild(fav); wrap.appendChild(hid);
+      b.appendChild(wrap);
+    })(btns[i]);
+    ensureMenuActToggle(root);
+  }
+  // 抽屉头部 ⚙ 开关：一键收起/显示这些按钮
+  function ensureMenuActToggle(root) {
+    try {
+      var head = root.querySelector ? root.querySelector(".head") : null;
+      if (!head) return;
+      var t = document.getElementById("mactToggle");
+      if (!t) {
+        t = document.createElement("span");
+        t.id = "mactToggle";
+        t.className = "macttg";
+        t.setAttribute("title", "显示/隐藏 菜单上的收藏与隐藏按钮");
+        t.addEventListener("click", function (e) {
+          if (e && e.stopPropagation) e.stopPropagation();
+          var on = !mactsEnabled();
+          setMactsEnabled(on);
+          clearMenuActs(root);
+          if (on) decorateMenuButtons();
+          else if (typeof toast === "function") toast("已收起菜单上的收藏/隐藏按钮（长按菜单项仍可操作）");
+        });
+        if (head.firstChild) head.insertBefore(t, head.firstChild); else head.appendChild(t);
+      }
+      t.textContent = mactsEnabled() ? "\u2699\uFE0F" : "\u2699";
+    } catch (e) {}
+  }
+  // 二次确认：收藏 / 移出快捷常用
+  function confirmFavMenu(act, b) {
+    var title = (typeof btnMenuTitle === "function" ? btnMenuTitle(b) : "") || act;
+    var on = isFavAct(act);
+    openModal(on ? "确认移出快捷常用？" : "确认加入快捷常用？",
+      '<div class="hint">' + (on ? '将把「<b>' + esc(title) + '</b>」从「快捷常用」中移出。' : '将把「<b>' + esc(title) + '</b>」加入「快捷常用」，显示在查询 / 筛选下方。') + '原菜单位置的功能<b>仍然保留</b>。</div>',
+      '<button class="btn ghost" id="cfCancel">取消</button><button class="btn primary" id="cfOk">' + (on ? "确认移出" : "确认收藏") + '</button>');
+    var c = el("cfCancel"); if (c) c.onclick = closeModal;
+    var o = el("cfOk");
+    if (o) o.onclick = function () { closeModal(); try { toggleQuickFav(act); } catch (e) { toast("操作失败：" + (e && e.message ? e.message : e)); } };
+  }
+  // 二次确认：隐藏菜单
+  function confirmHideMenu(act, b) {
+    var title = (typeof btnMenuTitle === "function" ? btnMenuTitle(b) : "") || act;
+    if (HM_PROTECT.indexOf(act) >= 0) { toast("该菜单是恢复入口，不允许隐藏"); return; }
+    openModal("确认隐藏此菜单？",
+      '<div class="hint">即将隐藏「<b>' + esc(title) + '</b>」。<br/>隐藏<b>不会删除</b>任何功能，可随时在「设置 → 恢复隐藏子菜单 / 隐藏子菜单列表」中恢复显示。</div>',
+      '<button class="btn ghost" id="cfCancel">取消</button><button class="btn primary" id="cfOk">确认隐藏</button>');
+    var c = el("cfCancel"); if (c) c.onclick = closeModal;
+    var o = el("cfOk");
+    if (o) o.onclick = function () { closeModal(); try { hideMenuAct(act); } catch (e) { toast("操作失败：" + (e && e.message ? e.message : e)); } };
+  }
+  // ---------- /v2.4.9 子菜单「隐藏 / 收藏」按钮 ----------
   function applyHiddenMenus() {
     const hm = loadHiddenMenus();
     const root = (document.getElementById && document.getElementById("drawer")) || document;
@@ -2797,6 +2954,7 @@ function popupHtml(r) {
       const grp = subs[i].previousElementSibling;
       if (grp && grp.classList && grp.classList.contains("mgroup")) grp.style.display = vis.length ? "" : "none";
     }
+    try { decorateMenuButtons(); } catch (e) {}
   }
   function hideMenuAct(act) {
     if (!act) return;
@@ -2917,6 +3075,7 @@ function popupHtml(r) {
       return `<button class="menu-btn qf-btn" data-act="${act}"><span class="ico">${ico}</span><span>${esc(title)}<span class="sub">快捷常用 · 长按移出</span></span></button>`;
     }).join("");
     box.querySelectorAll(".menu-btn").forEach(bindMenuBtn);
+    try { decorateMenuButtons(); } catch (e) {}
   }
   function openQuickFavSettings() {
     const all = [...document.querySelectorAll(".drawer .menu-btn:not(.qf-btn)")].filter((b) => !QF_EXCLUDE.includes(b.dataset.act));
