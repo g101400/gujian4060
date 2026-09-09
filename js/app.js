@@ -3992,7 +3992,7 @@ function popupHtml(r) {
       <div class="field"><label>浏览器端 TIANDITU_TOKEN（前端在线底图加载）</label><input id="tdtClient" class="inp" value="" placeholder="留空则保持当前密钥 · 32位 16 进制字符串"></div>
       <div class="field"><label>服务端 TIANDITU_SERVER_TOKEN（瓦片下载脚本）</label><input id="tdtServer" class="inp" value="" placeholder="留空则保持当前密钥 · 32位 16 进制字符串"></div>
       <div class="field"><label>当前生效的 token（已隐藏，防窃取）</label><input class="inp" readonly value="客户端：••••••••••••••••    服务端：••••••••••••••••"></div>
-      <div class="field"><label>复制当前密钥（需验证访问密码 <b>3305</b>）</label><input id="tdtPwd" type="password" class="inp" placeholder="输入访问密码" autocomplete="off"></div>
+      <div class="field"><label>复制当前密钥（需验证访问密码）</label><input id="tdtPwd" type="password" class="inp" placeholder="输入访问密码" autocomplete="off"></div>
       <div class="hint">密钥不再明文展示；点「复制当前密钥」并在上方输入正确密码后才可复制。恢复默认：点「恢复默认」回到内置 token；点「清空保存」清空 localStorage（恢复用 __CONFIG__ 注入）。</div>`;
     openModal("天地图密钥管理", html, `<button class="btn ghost" id="tdtReset">恢复默认</button><button class="btn ghost" id="tdtClear">清空保存</button><button class="btn ghost" id="tdtCopy">复制当前密钥</button><button class="btn ghost" id="tdtCancel">取消</button><button class="btn primary" id="tdtSave">💾 保存并立即生效</button>`);
     el("tdtCancel").onclick = closeModal;
