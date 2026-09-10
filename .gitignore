@@ -39,6 +39,7 @@ build/targets/ios/gujian_pwa/*
 *.log
 .data.real.*
 *.apk_hold
+*._bak_*
 rel_extract*/
 
 # ===== Python 缓存（字节码，不入版本库）=====
