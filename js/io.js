@@ -25,6 +25,17 @@
   }
   function utf8(str) { return new TextEncoder().encode(str); }
   function strFromUtf8(u) { return new TextDecoder().decode(u); }
+  // 管理所名称统一（与 app.js normOffice 保持一致）：去「管理」两字 + 潮河特例；
+  // 导出(kmz/ovkmz/kml/csv/潮河)统一套用，避免「温泉管理所」等原始名落盘，与导入/查询/筛选一致。
+  // v2.5.0 修复：本函数是 io.js 的**内部自足依赖**（folderPathOf 会调用它）。
+  // 此前只有 shuili 的 io.js 有定义，shipin / gujian 的 folderPathOf 调用到未定义的 normOffice
+  // → 导出 CSV/文件夹列时抛 ReferenceError、整个导出静默失败（v2.4.9 引入「文件夹」列时带进来的回归）。
+  function normOffice(name) {
+    if (!name) return "";
+    const s = String(name).trim();
+    if (/潮河/.test(s)) return "潮河所";            // 潮河管理所 / 潮河总干渠管理所 → 潮河所
+    return s.replace(/管理所/g, "所");              // 温泉管理所→温泉所、埝头管理所→埝头所
+  }
 
   // ---------- CRC32 ----------
   const CRC_TABLE = (() => {
