@@ -120,7 +120,7 @@
   });
 
   // 全局版本号（单一事实来源：关于 / 版本变更 / 帮助 均引用此处，避免硬编码漂移）
-  const APP_VER = "v2.4.8";
+  const APP_VER = "v2.4.9";
 
   // ---------- 状态 ----------
   let BASE = [], DELTA = { added: [], updated: {}, deleted: [] }, records = [];
@@ -161,14 +161,24 @@
       meteredHint: (type && type !== "wifi" && type !== "") // 非 wifi 视为可能走流量
     };
   }
-  // 大流量确认：非 WiFi 时警告（items 1/2：可能 >3GB）
-  function confirmLargeTransfer(title) {
-    const n = netInfo();
+  // v2.4.9：大文件确认（尺寸驱动）
+  //  · 本地导入导出不消耗流量 → 不再提示流量
+  //  · 文件较小（< BIG_TRANSFER）或无尺寸信息 → 直接放行，不弹窗
+  //  · 文件较大 → 标题「操作提示」，内容「文件大小为 X，耗时较长，是否继续？」
+  const BIG_TRANSFER = 50 * 1048576; // 50MB：超过才提示耗时
+  function fmtSizeBytes(b) {
+    const n = Number(b) || 0;
+    if (n >= 1073741824) return (n / 1073741824).toFixed(2) + "GB";
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + "MB";
+    if (n >= 1024) return Math.round(n / 1024) + "KB";
+    return n + "B";
+  }
+  function confirmLargeTransfer(title, sizeBytes) {
+    const size = Number(sizeBytes) || 0;
     return new Promise((resolve) => {
-      if (n.wifi || !n.online) return resolve(true); // WiFi 或离线（离线说明本地操作，无需流量）
-      const html = `<div class="hint" style="color:#e67e22">⚠️ 当前<b>未连接 WiFi</b>（连接类型：${esc(n.type || "未知")}），传输超大文件（可能 >3GB）将消耗大量移动流量，可能产生资费。</div>
-        <div class="hint">建议：连接 WiFi 后再操作；或确认流量充足后继续。</div>`;
-      openModal(title || "大流量提醒", html, `<button class="btn ghost" id="ltCancel">取消</button><button class="btn primary" id="ltGo">仍要继续</button>`);
+      if (!size || size < BIG_TRANSFER) return resolve(true); // 小文件/未知大小：不打扰
+      const html = `<div class="hint">文件大小为 <b>${fmtSizeBytes(size)}</b>，耗时较长，是否继续？</div>`;
+      openModal("操作提示", html, `<button class="btn ghost" id="ltCancel">取消</button><button class="btn primary" id="ltGo">继续</button>`);
       el("ltCancel").onclick = () => { closeModal(); resolve(false); };
       el("ltGo").onclick = () => { closeModal(); resolve(true); };
     });
@@ -1284,7 +1294,7 @@ function popupHtml(r) {
     await importCpResumePrompt(kind); // 若上次导入被中断，提示用户（item 1/2 续传）
     // 大文件流量提醒（items 1/2：文件夹/zip 可能含大量照片 >3GB）
     if (mode === "folder" || mode === "zip") {
-      const go = await confirmLargeTransfer("批量导入（可能含大量文件）");
+      const go = await confirmLargeTransfer("批量导入（可能含大量文件）", 0); // 本地读取，无流量；无尺寸不打扰
       if (!go) { importCpEnd(); return; }
     }
     pendingBatch[kind === "photos" ? "photos" : "sheets"] = [];
@@ -1625,7 +1635,8 @@ function popupHtml(r) {
         `<button class="btn primary" onclick="APP.close()">知道了</button>`);
     }
     // 大文件流量提醒
-    const go = await confirmLargeTransfer(`导出 ${files.length} 张照片（可能很大）`);
+    const _phSize = files.reduce((a, f) => a + Math.floor(String(f.b64 || "").length * 0.75), 0);
+    const go = await confirmLargeTransfer(`导出 ${files.length} 张照片`, _phSize);
     if (!go) { closeModal(); return; }
     closeModal();
     busy("正在生成照片压缩包，请稍后…");
@@ -1823,14 +1834,15 @@ function popupHtml(r) {
     if (!["kml", "csv", "kmz", "ovkmz", "xls", "xlsx", "ovobj", "obj"].includes(ext)) return toast("不支持的格式：" + ext);
     // 大文件流量提醒（items 1/2：kmz/ovkmz 可能含大量照片 >3GB）
     if (ext === "kmz" || ext === "ovkmz") {
-      const go = await confirmLargeTransfer("导入 kmz/ovkmz（可能含大量照片）");
+      const go = await confirmLargeTransfer("导入 kmz/ovkmz", file.size);
       if (!go) return;
     }
     try {
       busy("正在解析导入文件，请稍后…");
       let recs, bufBytes = null;
-      if (ext === "kml") { recs = IO.parseKmlToRecords(await file.text()); }
-      else if (ext === "csv") { recs = IO.parseCsvToRecords(await file.text()); }
+      // v2.4.9-C：CSV/KML 先读字节再自动识别编码（奥维导出多为 GBK，直接 file.text() 会乱码）
+      if (ext === "kml") { const ab = await file.arrayBuffer(); bufBytes = new Uint8Array(ab); recs = IO.parseKmlToRecords(IO.decodeText(bufBytes)); }
+      else if (ext === "csv") { const ab = await file.arrayBuffer(); bufBytes = new Uint8Array(ab); recs = IO.parseCsvToRecords(IO.decodeText(bufBytes)); }
       else if (ext === "xlsx") { const ab = await file.arrayBuffer(); bufBytes = new Uint8Array(ab); recs = await IO.parseXlsxToRecords(bufBytes); }
       else if (ext === "xls") { const txt = await file.text(); bufBytes = IO.utf8(txt); recs = IO.parseXlsToRecords(txt); }
       else if (ext === "ovobj" || ext === "obj") {
@@ -1944,8 +1956,9 @@ function popupHtml(r) {
     el("exCancel").onclick = closeModal;
     // 导出可选列（#39）：csv/chaohe 时显示列多选，默认全选
     const EX_COLS = {
-      csv: [["folder", "文件夹"], ["name", "名称"], ["lon", "经度"], ["lat", "纬度"], ["comment", "Comment"]],
-      chaohe: [["name", "名称"], ["city", "城市"], ["station", "区县"], ["atype", "古建类型"], ["lon", "经度"], ["lat", "纬度"], ["comment", "说明"]],
+      // v2.4.9-C：列键与 io.buildCsv(keys: name/office/station/btype/lat/lon/params) 严格对齐
+      csv: [["name", "名称", true], ["office", "管理所", true], ["station", "管理站", true], ["btype", "建筑物类型", true], ["lat", "纬度", true], ["lon", "经度", true], ["params", "Comment", true], ["folder", "文件夹", false]],
+      chaohe: [["name", "名称"], ["office", "管理所"], ["station", "管理站"], ["btype", "建筑物类型"], ["lon", "经度"], ["lat", "纬度"], ["comment", "说明"]],
       xlsx: [["name", "名称"], ["province", "省份"], ["city", "城市"], ["station", "区县"], ["atype", "古建类型"], ["lon", "经度"], ["lat", "纬度"], ["desc", "说明"]],
       xls: [["name", "名称"], ["province", "省份"], ["city", "城市"], ["station", "区县"], ["atype", "古建类型"], ["lon", "经度"], ["lat", "纬度"], ["desc", "说明"]],
       ovobj: [["name", "名称"], ["city", "城市"], ["station", "区县"], ["atype", "古建类型"], ["lon", "经度"], ["lat", "纬度"], ["desc", "说明"]],
@@ -1988,7 +2001,8 @@ function popupHtml(r) {
       const base = fnameRaw ? fnameRaw.replace(/\.[^.]+$/, "") : "古建基础信息";
       // 大文件流量提醒（items 1/2：ovkmz/kmz 含照片可能 >3GB）
       if (fmt === "ovkmz" || fmt === "kmz") {
-        const go = await confirmLargeTransfer("导出 " + fmt.toUpperCase() + "（含照片，可能很大）");
+        const _sz = (typeof sel !== "undefined" && sel ? sel : []).reduce((a, r) => a + (r.photos || []).reduce((b, ph) => b + Math.floor(String(ph.dataUrl || ph.full || "").length * 0.75), 0), 0);
+        const go = await confirmLargeTransfer("导出 " + fmt.toUpperCase(), _sz);
         if (!go) return;
       }
       // 导出前先显示「执行中」遮罩：含照片的 kmz/ovkmz 在 JS 端打包 base64 可能较慢，避免"点了没反应"
@@ -2200,6 +2214,16 @@ function popupHtml(r) {
       <b>⬆️ 升级与备份</b>：菜单→设置→软件升级，公开版/内部版均经<b>百度网盘自动升级</b>（填入 latest.json 直读地址即可，下载填网盘分享链接）；升级前先「升级数据导出」（可自定义文件夹/文件名，默认「古建一张图备份+日期.bak」），该包可回灌「升级数据导入」（会覆盖本机全部数据，已明确提示风险）。<br>
       <b>📝 游记</b>：古建「写游记」——所见即所得（字体/字号/表情/图片/表格），默认绑定古建，关键词筛选，导出 MD+JSON，内容镜像知识库供 AI 查询。<br>
       <b>🤖 智能 AI</b>：智能查询/智能问询/AI 更新/纠错/对话，均基于已接入的大模型（设置→大模型 AI 设置 配置密钥与地址）；联网开启时本地无果可联网兜底，答案标注来源。<br>
+      <hr style="border:none;border-top:1px dashed var(--line);margin:10px 0">
+      <b>🔎 知识库增强（v2.4.8）</b>：<b>模糊检索</b>错字 / 缺字 / 语序不同也能命中（结果带相关度百分比）；<b>提示词生成</b>把「问题 + 知识库最相关片段 + 长期记忆」自动拼成完整提示词，可复制自用或直接投喂大模型；<b>存疑与反向查询</b>可对任一条目打标并反查知识库辅助核实；设置新增「<b>通过 GitHub 升级</b>」（内部版查 *-internal-4060、公开版查 *-public-4060，与网盘双通道隔离一致）。<br>
+      <b>🔐 启动口令保护（内部版，v2.4.9）</b>：首次启动校验启动口令，支持「记住本机 / 修改口令 / 忘记口令」；忘记口令时请联系软件开发者或管理员协助重置（出厂口令见交付说明）。公开版与古建为单通道发布，无启动口令。<br>
+      <b>📶 智能传输提示</b>：本机导入 / 导出（不走网络）不再弹流量提醒；小文件直接执行；仅大文件（≥50MB）弹「操作提示」并显示文件大小与耗时提醒。<br>
+      <b>🖼️ 图片预览增强</b>：电脑端鼠标<b>拖拽平移 + 滚轮缩放</b>（1~5 倍），手机端<b>双指缩放 + 拖动</b>，长按可调出菜单；键盘 + / − / 方向键 / 0 复位亦可用。<br>
+      <b>📝 笔记导出</b>：备忘录 / 运维记录 / 游记支持一键<b>导出 Word（.doc）</b>与<b>导出 PDF</b>（走系统打印「另存为 PDF」）。<br>
+      <b>🧭 对象智能检索</b>（菜单 → 对象智能检索）：<b>参数反查</b>（按参数键 / 值反查对象）、<b>分类统计</b>（按类型 / 管理所 / 参数汇总）、<b>类型定义入库</b>（向量化后参与检索）、<b>预案文档关联</b>、<b>生成说明文档</b>（可导出 Word / PDF）、<b>PDF 转 Word</b>。<br>
+      <b>📊 表格导入导出规范化</b>：导入奥维导出的 CSV 自动识别编码（UTF-8 / GBK / GB18030 / Big5），不再报「未找到名称列」；导出 CSV 第 8 列为 <b>Comment</b>、多参数以「<b>|</b>」分隔并新增「文件夹」列（管理处 / 管理所 / 段--类型）；导出的表格可原样回导；ovkmz 备注按「键 : 值|」换行输出，与奥维一致。<br>
+      <b>🏷️ 管理所智能识别</b>：9 所标准名单模糊匹配 + 潮河 / 水库特例归并 + 「站」归为所的下一级；导入 / 导出 / 筛选三处口径统一。<br>
+      <b>⛶ 图片 / 文档导出</b>：对象智能检索与笔记页均可「导出 PDF」；导出的 PDF 直接用系统打印对话框「另存为 PDF」保存。<br>
       <b>🐞 错误日志</b>：菜单→信息与帮助→错误日志，全局捕获运行错误（环形缓冲），可查看/复制/清空，便于反馈排查。
     </div>`;
     openModal("帮助", html, `<button class="btn ghost" onclick="APP.close()">知道了</button>`);
@@ -2249,6 +2273,7 @@ function popupHtml(r) {
   }
   // 版本变更：单一来源 APP_VER + 内置变更摘要（与文档同步维护）
   const CHANGELOG = [
+    ["v2.4.9", "2026-09-11", ["复制密钥对话框不再显示明文口令（访问口令仅见交付说明），对话框与提示语统一去除明文", "智能传输提示：本机导入 / 导出（不走网络）不再弹流量提醒、小文件直接执行不打扰；仅大文件（≥50MB）改弹「操作提示」并显示文件大小与耗时提醒", "子菜单「隐藏 / 收藏」按钮与菜单文字间距拉大，避免误触（仍为长按触发 + 二次确认）", "修复导入「未找到名称列」：奥维导出的 GBK / ANSI 编码 CSV 不再乱码——按 BOM / UTF-8 / GB18030 / GBK / Big5 自动识别编码", "CSV 导出列规范化：第 8 列「参数说明」改为「Comment」，多参数分隔符由「;」改为「|」，并新增「文件夹」列（管理处 / 管理所 / 段--类型），与奥维导入格式对齐", "导入兼容自身导出：参数分隔符「|」「;」与半角「:」/ 全角「：」均可解析，导出的表格重新导入后参数可正常显示到古建详情", "ovkmz 导出备注：参数按「键 : 值|」并换行组织，与奥维原装格式一致", "管理所智能识别：9 所标准名单模糊匹配 + 潮河 / 水库特例归并 + 「站」归为所的下一级；导入、导出、筛选三处口径统一", "导出前实时统计「将导出 N 个古建 / M 张照片」（随范围与管理所勾选联动）；照片导出补 full → dataUrl → thumb 兜底链，三者皆空时明确提示并写入错误日志", "图片预览增强：电脑端支持鼠标拖拽平移 + 滚轮缩放（1~5 倍），手机端支持双指缩放 + 拖动 + 长按菜单，另支持键盘 + / - / 方向键 / 0 复位", "游记 / 备忘录新增「导出 Word」「导出 PDF」（PDF 走系统打印「另存为 PDF」）", "新增「对象智能检索」菜单组：参数反查 / 分类统计 / 类型定义入库（向量化）/ 预案文档关联 / 生成说明文档 / PDF 转 Word，并支持导出 Word 与 PDF"]],
     ["v2.4.8", "2026-09-07", ["知识库智能化：新增「知识库模糊检索」——错字/缺字/语序不同也能命中（如「跌水闸」可命中「跌水节制闸」），结果带相关度百分比，可对任一条目直接反向查询或标为存疑", "新增「提示词生成」：问题 + 知识库最相关片段 + 长期记忆自动拼装成完整提示词，可复制自用或直接投喂大模型；AI 查询结果新增「查看提示词」按钮", "新增「AI 记忆（Hermes）」：查询/纠错/存疑自动沉淀为记忆并在提示词中引用，支持查看、按关键词检索、一键清空（不影响知识条目）", "新增「存疑与反向查询」：不确定的内容可打存疑标记（标签：存疑/待核实），系统用其内容反向检索知识库给出最相关条目辅助核实；AI 查询结果可一键「标为存疑」", "修复重要缺陷：AI 调用时已生成知识库上下文却仍把原始问题发给模型（知识库等于没接上），现已真正随请求发送", "设置新增「通过 GitHub 升级」子菜单（内部版查 *-internal-4060、公开版查 *-public-4060，与网盘双通道隔离一致；私有库支持填 GitHub 只读 Token）", "菜单可隐藏：长按任意菜单项选择隐藏，设置中「恢复隐藏子菜单 / 隐藏子菜单列表」随时恢复，恢复入口受保护不会被自己锁死", "导出位置可自定义：设置「导出文件位置」预配置默认文件夹，导出前可询问（批量导出只问一次），知识库导出默认名改为「知识库YYYY-MM-DD」", "奥维 ovkmz 互通修复：导入剥除 UTF-8 BOM（原装文件不再报 xml 语法错误）、附件路径归一（照片不再只显示占位符）；导出照片目录对齐原装 ovatta/、参数分隔符对齐「键 : 值|」"]],
     ["v2.4.7", "2026-09-05", ["升级按钮与自动升级：设置菜单新增「检查新版本」一键检测（百度网盘）；发现新版自动下载安装包（直链走 fetch 分块下载+进度；百度网盘分享页自动打开并备好提取码），可在升级对话框关闭自动下载", "古建改单通道：数据本身公开、两端全功能，取消内部分版——构建只出一套包，升级走 public 通道", "发版自动上传百度网盘：构建收尾自动上传安装包 + latest.json 到网盘发布目录（未登录时优雅跳过）"]],
     ["v2.4.6", "2026-09-05", ["知识库智能框架：保存即「切片+向量化」——句子级切片（尽量保持语句完整，长段按句切且重叠衔接），离线哈希向量（中英文混排，零外部依赖）+ 关键词命中 = 混合检索；支持反向查询（内容→条目）、模糊/语义查询、智能生成提示词", "引入记忆管理（MEMORY）与 Hermes 自我学习机制，并与已接入大模型有机融合（AI 提示词自动拼装 KB 精准片段 + 自学习记忆），统一上下文检索入口", "升级体系升级：古建内部版与公开版均可经百度网盘自动升级（latest.json 直读清单 + download 填网盘分享链接）；升级数据导出支持自定义文件夹/文件名（默认「古建一张图备份+日期.bak」），导出文件可回灌导入并提示覆盖全部数据风险", "修复「写游记」菜单 script error：journal.js 全面 ES5 兼容 + 全局 helper 缺失时 fail-loud；app.js 顶部注入 NodeList.forEach 等老 WebView 兼容垫片，杜绝白屏与裸 script error", "内置轻量 OCR（tesseract.js 本地资产 chi_sim/eng，离线）：扫描件 PDF 与 jpg/png/bmp/webp 图片自动识别文字入库，懒加载不拖启动", "新增「信息与帮助→四端功能对照单/版本变更/功能介绍」全部同步到最新（含 v2.4.4~v2.4.6 新增能力）"]],
@@ -2633,6 +2658,41 @@ function popupHtml(r) {
     img.addEventListener("mousedown", startLP);
     img.addEventListener("mouseup", cancelLP);
     img.addEventListener("mouseleave", cancelLP);
+    // ---------- v2.4.9-D 电脑端：鼠标拖拽平移 + 滚轮缩放（与手机端手势并存）----------
+    let mDown = false, mMoved = false, mSX = 0, mSY = 0, mTX = 0, mTY = 0;
+    img.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      mDown = true; mMoved = false; mSX = e.clientX; mSY = e.clientY; mTX = tx; mTY = ty;
+    });
+    document.addEventListener("mousemove", (e) => {
+      if (!mDown) return;
+      const dx = e.clientX - mSX, dy = e.clientY - mSY;
+      if (!mMoved && Math.abs(dx) + Math.abs(dy) > 4) { mMoved = true; cancelLP(); img.style.cursor = "grabbing"; }
+      if (mMoved && scale > 1) { tx = mTX + dx; ty = mTY + dy; clampT(); applyT(); }
+    });
+    document.addEventListener("mouseup", () => {
+      if (!mDown) return;
+      mDown = false; img.style.cursor = scale > 1 ? "grab" : "zoom-in";
+    });
+    img.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const step = e.deltaY < 0 ? 0.25 : -0.25;
+      scale = Math.max(1, Math.min(5, scale + step));
+      if (scale === 1) { tx = 0; ty = 0; } else { clampT(); }
+      applyT();
+    }, { passive: false });
+    img.style.cursor = "zoom-in";
+
+    function onKeyLb(e) {
+      if (!el("lightbox").classList.contains("show")) return;
+      if (e.key === "+" || e.key === "=") { scale = Math.min(5, scale + 0.25); applyT(); }
+      else if (e.key === "-" || e.key === "_") { scale = Math.max(1, scale - 0.25); if (scale === 1) { tx = 0; ty = 0; } applyT(); }
+      else if (e.key === "ArrowLeft") switchPhoto(-1);
+      else if (e.key === "ArrowRight") switchPhoto(1);
+      else if (e.key === "0") resetT();
+    }
+    if (!window.__lbKeyBound) { window.__lbKeyBound = 1; document.addEventListener("keydown", onKeyLb); }
+    // ---------- /v2.4.9-D ----------
     el("lbPrev").onclick = () => switchPhoto(-1);
     el("lbNext").onclick = () => switchPhoto(1);
     el("lbSave").onclick = saveCurrentPhoto;
@@ -3985,7 +4045,7 @@ function popupHtml(r) {
   if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
     navigator.serviceWorker.register("sw.js").catch(() => {});
 
-  // ---------- v2.4.3 天地图密钥管理（#9：隐藏当前密钥 + 复制需密码 3305）----------
+  // ---------- v2.4.3 天地图密钥管理（#9：隐藏当前密钥 + 复制需访问密码）----------
   function openTiandituKeySettings() {
     const cur = (() => { try { return JSON.parse(localStorage.getItem("appsettings_key_v1") || "{}"); } catch (e) { return {}; } })();
     const html = `<div class="hint">天地图密钥可能过期。本页可重置浏览器端与服务端 token；保存后<b>立即生效</b>（无需刷新页面）。默认 token 用于开箱即用，重设后写到 localStorage appsettings_key_v1，原 __CONFIG__ 配置不再被读取。</div>
