@@ -53,3 +53,9 @@ node_modules/
 Thumbs.db
 *.swp
 *.swo
+
+# ===== Agent 工作区数据（自动化记忆/日志，属本地运行态，不入版本库）=====
+# 坑 41 同源问题：gujian 此前缺此规则 → 公开仓 g101400/gujian4060 混入
+# .workbuddy/memory/2026-09-07.md 与 automations/*/memory.md，
+# 且每轮同步恒定「更新 1」= 自记忆文件，产生 8 次/日 自噪声 commit（2026-09-14 清理）
+.workbuddy/
