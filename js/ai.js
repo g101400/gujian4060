@@ -9,9 +9,10 @@
 (function (global) {
   const LS_KEY = "ai_settings_v1";
 
-  // OpenRouter 默认密钥（用户 jykjk2010 提供，2026-08-28 轮换导入）。
-  // 仅用于本地 App 调用；如对外分发请改为空字符串让用户自行填写，并建议到 openrouter.ai 重置该密钥。
-  const DEFAULT_OR_KEY = "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";
+  // OpenRouter 默认密钥：已外置到独立配置文件 ai_config.js（window.SHUILI_AI_CONFIG.openrouterKey）。
+  // 2026-09-16：原内联密钥曾随公开仓库 / gh-pages 外泄，已移除并需到 openrouter.ai 重置。
+  // 公开分发时 ai_config.js 保持空值，由用户在「智能分析设置」中填写自有密钥。
+  const DEFAULT_OR_KEY = (global.SHUILI_AI_CONFIG && global.SHUILI_AI_CONFIG.openrouterKey) || "";
 
   // ---------- 设置持久化 ----------
   // 默认预置 3 个 OpenRouter 免费模型（已实测可用 2026-08-28）：
