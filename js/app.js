@@ -129,6 +129,7 @@
   const filterActive = () => !!(filter.province.length || filter.city.length || filter.atype.length || (filter.q && filter.q.trim()) || (filter.photo && filter.photo.mode !== "all"));
   let vecLayer = null, cvaLayer = null, imgLayer = null, ciaLayer = null, basemapOn = false, layerType = "vec";
   let lastCenter = null, myLoc = null, myLocMarker = null;
+  let lastWindowId = null;   // C1：记住上次返回的收藏窗口，下次进入自动恢复该视图
   let measureMode = false, measurePts = [], measureLine = null;
   let nearbyCenter = null, nearbyRadius = null, nearbyCircle = null, nearbyAtypes = [];
   const DEFAULT_CENTER = [39.9163, 116.3972]; // 北京故宫 质心
@@ -316,6 +317,15 @@ function back() {
     DELTA = await Store.get();
     applyDims();
     merge();
+    // C5 首开默认：5 类常见古建（古塔/寺庙/城墙/故居/古街）
+    // 双重校验：类型须在「当前城市作用域」内实际存在才勾选；
+    // 若一类都不存在则回落空选(= 显示全部)，避免首开白屏。
+    if (!Store.ui.get()) {
+      const DEF_ATYPES = ["古塔", "寺庙", "城墙", "故居", "古街"];
+      const scope = filter.city.length ? records.filter((r) => filter.city.includes(r.city)) : records;
+      filter.atype = DEF_ATYPES.filter((t) => scope.some((r) => r.atype === t));
+      saveUI();
+    }
     render();
   }
   function merge() {
@@ -373,6 +383,7 @@ function back() {
       basemapOn = s.basemap === true;
       layerType = (s.layer === "img") ? "img" : "vec";
       lastCenter = s.center || null;
+      lastWindowId = s.lastWindowId || null;   // C1：恢复上次的收藏窗口 id
     } else {
       // 首次打开：默认「北京」(数据城市字段值为"北京"非"北京市")，仅载北京古建→开图更快；不加载底图
       filter.province = [];
@@ -384,7 +395,7 @@ function back() {
     }
   }
   function saveUI() {
-    Store.ui.set({ province: filter.province, city: filter.city, atype: filter.atype, basemap: basemapOn, layer: layerType, center: lastCenter });
+    Store.ui.set({ province: filter.province, city: filter.city, atype: filter.atype, basemap: basemapOn, layer: layerType, center: lastCenter, lastWindowId });
   }
 
   // ---------- 地图 ----------
@@ -393,13 +404,13 @@ function back() {
   const tdtUrl = (lyr) => `https://t{s}.tianditu.gov.cn/${lyr}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${lyr}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU}`;
   function initMap() {
     // attributionControl 去掉默认「Leaflet」外链（https://leafletjs.com）：离线/弱网点该链接会 ERR_CONNECTION_TIMED_OUT；本地资源已离线化
-    map = L.map("map", { zoomControl: true, attributionControl: L.control.attribution({ prefix: false }) }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+    map = L.map("map", { zoomControl: true, preferCanvas: true, attributionControl: L.control.attribution({ prefix: false }) }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
     const baseOpts = TDT_BASEOPTS, tk = tdtUrl;
     vecLayer = L.tileLayer(tk("vec"), baseOpts);
     cvaLayer = L.tileLayer(tk("cva"), baseOpts);
     imgLayer = L.tileLayer(tk("img"), baseOpts);
     ciaLayer = L.tileLayer(tk("cia"), baseOpts);
-    layerGroup = L.layerGroup().addTo(map);
+    layerGroup = L.featureGroup().addTo(map); // 2026-09-16 修复：L.layerGroup 无 getBounds()，fitToShown 运行时报错；featureGroup 继承 layerGroup 且自带 getBounds（与水利端 2026-08-20 修复对齐）
     overlayGroup = L.layerGroup().addTo(map); // 测距 / 周边 等叠加层，render() 不清空
     ckLayer = L.layerGroup().addTo(map); // 打卡足迹叠加层（金色 #e0a93c）
     map.on("popupopen", onPopupOpen);
@@ -2779,6 +2790,7 @@ function popupHtml(r) {
         const name = (el("favName").value || def).trim() || def;
         const entry = { id: "w" + Date.now().toString(36), name, bounds, center, zoom };
         setFavs(favs.concat([entry]));
+        lastWindowId = entry.id; saveUI();   // C1：记住本次收藏为「上次窗口」
         closeModal();
         toast("已收藏窗口：" + name + "（点 📍 返回）");
       };
@@ -2790,12 +2802,15 @@ function popupHtml(r) {
         if (s.fav && s.fav.lat != null) { return flyToFav({ center: [s.fav.lat, s.fav.lng], zoom: s.fav.zoom }); } // 兼容旧版单点收藏
         return toast("尚未收藏窗口，请先点 ⭐ 收藏当前窗口");
       }
-      if (favs.length === 1) { flyToFav(favs[0]); return toast("已返回收藏窗口：" + favs[0].name); }
+      if (favs.length === 1) {
+        lastWindowId = favs[0].id; saveUI();   // C1：记住本次返回为「上次窗口」
+        flyToFav(favs[0]); return toast("已返回收藏窗口：" + favs[0].name);
+      }
       const html = favs.map((f, i) => `<div class="fav-item" data-i="${i}"><span class="fi-ico">🪟</span><span class="fi-name">${esc(f.name)}</span><span class="fi-meta">缩放 ${f.zoom}</span></div>`).join("");
       openModal("返回收藏窗口", `<div class="hint">选择一个窗口返回（按记录范围 + 缩放居中）：</div><div class="filelist">${html}</div>`, `<button class="btn ghost" id="favClose">关闭</button>`);
       el("favClose").onclick = closeModal;
       document.querySelectorAll(".fav-item").forEach((it) => {
-        it.onclick = () => { const i = +it.dataset.i; closeModal(); flyToFav(favs[i]); toast("已返回收藏窗口：" + favs[i].name); };
+        it.onclick = () => { const i = +it.dataset.i; lastWindowId = favs[i].id; saveUI(); closeModal(); flyToFav(favs[i]); toast("已返回收藏窗口：" + favs[i].name); };
       });
     }
     // 三击地图任意处 → 强制恢复主菜单（测距/选点模式不触发，避免误操）
@@ -4035,18 +4050,27 @@ function popupHtml(r) {
     window.__integrity = { missing, ok: !missing.length, ts: Date.now() };
     if (missing.length) console.warn("[integrity] missing:", missing.map((n) => required.find((r) => r[0] === n)[2]).join("\u3001"));
   })();
+  // C1：启动恢复「上次窗口」——必须定义在 IIFE 顶层作用域。
+  // 此前误放在 bindUI() 内部，顶层调用必然 ReferenceError；又被 .catch 吞成 toast，
+  // 导致故障只留一句 toast、初始化收尾中断（2026-09-16 修复）。
+  function restoreLastWindow() {
+    if (lastWindowId) {
+      const f = getFavs().find((x) => x.id === lastWindowId);
+      if (f) { flyToFav(f); return; }
+    }
+    if (lastCenter) map.setView([lastCenter.lat, lastCenter.lng], lastCenter.zoom);
+    else fitToShown();
+  }
   initMap();
   bindUI();
   loadUI();
   load().then(() => {
-    addBasemap();
-    updateLayerBtn();
-    render();
-    initKB();
-    renderCheckinMarkers();
-    if (lastCenter) map.setView([lastCenter.lat, lastCenter.lng], lastCenter.zoom);
-    else fitToShown();
-  }).catch((e) => toast("加载失败：" + e.message));
+    // 各步骤独立容错：任何一步抛错只提示对应步骤，不再中断后续（否则一处异常 = 整屏空白）
+    const steps = [["底图", addBasemap], ["图层按钮", updateLayerBtn], ["渲染", render], ["知识库", initKB], ["打卡足迹", renderCheckinMarkers], ["恢复窗口", restoreLastWindow]];
+    for (const [name, fn] of steps) {
+      try { fn(); } catch (e) { console.error("[init] " + name + " 失败:", e); toast("初始化[" + name + "]失败：" + e.message); }
+    }
+  }).catch((e) => { console.error("[init] load 失败:", e); toast("加载失败：" + e.message); });
   if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
     navigator.serviceWorker.register("sw.js").catch(() => {});
 
