@@ -19,6 +19,7 @@
   <div class="search"><input id="search" placeholder="搜索古建名称…" autocomplete="off"></div>
   <button class="iconbtn txt" id="btnLayer" title="图源">矢量</button>
   <button class="iconbtn accent" id="btnFilter" title="筛选">🎛️</button>
+  <button class="iconbtn" id="btnAI" title="智能推荐">💡</button>
   <button class="iconbtn" id="btnList" title="列表">☰</button>
   <button class="iconbtn" id="btnBase" title="底图">🚫</button>
   <button class="iconbtn exit" id="btnExit" title="退出当前页面">✕</button>
@@ -182,6 +183,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="lib/leaflet.js"></script>
+<script src="js/idb_shim.js"></script>
 <script src="js/store.js"></script>
 <script src="js/imgutil.js"></script>
 <script src="js/io.js"></script>
@@ -190,6 +192,7 @@
 <script src="js/kb.js"></script>
 <script src="js/ocr.js"></script>
 <script src="js/ai_config.js"></script>
+<script src="js/ai_prompts.js"></script>
 <script src="js/ai.js"></script>
 <!-- 天地图 Token：真实值见 secrets/config.local.js（本地，.gitignore 排除，克隆后请自建并填入真实 token）；占位模板 secrets/config.js 已提交 -->
 <script>
