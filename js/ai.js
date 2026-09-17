@@ -9,9 +9,10 @@
 (function (global) {
   const LS_KEY = "ai_settings_v1";
 
-  // OpenRouter 默认密钥（用户 jykjk2010 提供，2026-08-28 轮换导入）。
-  // 仅用于本地 App 调用；如对外分发请改为空字符串让用户自行填写，并建议到 openrouter.ai 重置该密钥。
-  const DEFAULT_OR_KEY = "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";
+  // OpenRouter 默认密钥：已外置到独立配置文件 ai_config.js（window.SHUILI_AI_CONFIG.openrouterKey）。
+  // 2026-09-16：原内联密钥曾随公开仓库 / gh-pages 外泄，已移除并需到 openrouter.ai 重置。
+  // 公开分发时 ai_config.js 保持空值，由用户在「智能分析设置」中填写自有密钥。
+  const DEFAULT_OR_KEY = (global.SHUILI_AI_CONFIG && global.SHUILI_AI_CONFIG.openrouterKey) || "";
 
   // ---------- 设置持久化 ----------
   // 默认预置 3 个 OpenRouter 免费模型（已实测可用 2026-08-28）：
@@ -26,6 +27,7 @@
         { id: "local_ollama", name: "本地 Ollama", baseUrl: "http://localhost:11434/v1", protocol: "openai", apiKey: "ollama", modelId: "llama3", local: true }
       ],
       defaultModel: "mx_m27",
+      localFirst: true,   // 𝖳 D1 本地优先路由（默认开启）
       strategy: { mode: "fallback", order: ["mx_m27", "glm52", "mx_m3", "local_ollama"], last: 0 }
     };
   }
@@ -107,7 +109,13 @@
   // ---------- 自动调用策略 ----------
   function resolveOrder(s) {
     if (s.strategy.mode === "single") return [s.defaultModel].filter(Boolean);
-    if (s.strategy.mode === "fallback") return (s.strategy.order && s.strategy.order.length) ? s.strategy.order : [s.defaultModel];
+    let base = (s.strategy.order && s.strategy.order.length) ? s.strategy.order : [s.defaultModel];
+    if (s.localFirst) {
+      // 𝖳 D1 本地优先路由：弱网/离线时把本地模型(同机/局域网)排到最前，先本地后云端
+      const isLocal = (id) => { const mm = s.models.find((x) => x.id === id); return !!(mm && mm.local); };
+      base = base.slice().sort((a, b) => (isLocal(b) ? 1 : 0) - (isLocal(a) ? 1 : 0));
+    }
+    if (s.strategy.mode === "fallback") return base;
     if (s.strategy.mode === "roundrobin") {
       const base = (s.strategy.order && s.strategy.order.length) ? s.strategy.order : [s.defaultModel];
       let idx = (typeof s.strategy.last === "number") ? s.strategy.last : 0;
@@ -119,6 +127,16 @@
     return [s.defaultModel];
   }
 
+  // 🅳 D2 分析结果缓存：相同提示词+选项+模型顺序命中本地缓存，省词元/提速（弱网尤其明显），上限 LRU 淘汰
+  const _AI_CACHE_KEY = "ai_cache_v1", _AI_CACHE_MAX = 200;
+  const _aiCache = (function () {
+    let m = {};
+    try { m = JSON.parse(localStorage.getItem(_AI_CACHE_KEY) || "{}") || {}; } catch (e) {}
+    return {
+      get(k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
+      set(k, v) { m[k] = v; const ks = Object.keys(m); if (ks.length > _AI_CACHE_MAX) delete m[ks[0]]; try { localStorage.setItem(_AI_CACHE_KEY, JSON.stringify(m)); } catch (e) {} }
+    };
+  })();
   async function strategyCall(prompt, opts) {
     // 需求③ + v2.4.6 智能框架：注入本地知识库上下文 + Hermes 自我学习记忆（无则优雅降级）
     const kbc = (window.__kbContext && typeof window.__kbContext === "function") ? await window.__kbContext(prompt) : "";
@@ -129,6 +147,9 @@
     window.__lastAIPrompt = fullPrompt;   // v2.4.8：供「查看提示词」回显
     const s = loadSettings();
     const order = resolveOrder(s);
+    const cacheKey = JSON.stringify({ p: fullPrompt, o: { s: (opts && opts.system) || "", j: !!(opts && opts.json), mt: (opts && opts.maxTokens) || 0 }, ord: order.join("|"), h: (opts && opts.history && opts.history.length) ? opts.history.map(function (x) { return x.role + ":" + (x.content || "").length; }).join(",") : "" });
+    const cached = _aiCache.get(cacheKey);
+    if (cached != null) return cached;
     let lastErr;
     for (const id of order) {
       const m = s.models.find((x) => x.id === id) || s.models.find((x) => x.id === s.defaultModel);
@@ -136,6 +157,7 @@
       try {
         const r = await callOne(m, fullPrompt, opts);
         saveSettings(s);
+        _aiCache.set(cacheKey, r);
         return r;
       } catch (e) {
         lastErr = e;
@@ -289,6 +311,38 @@
     };
   }
 
+  // ---------- 🅳 D4 提示词模板化 + D5 多轮会话 基础设施 ----------
+  const CUSTOM_SYS_KEY = "ai_custom_system_v1";
+  function getUserCustomSystem() {
+    try { const v = (localStorage.getItem(CUSTOM_SYS_KEY) || "").trim(); return v || ""; } catch (e) { return ""; }
+  }
+  // 系统提示词从 ai_prompts.js 模板读取，支持用户自定义角色覆盖；模板缺失时回退默认值，绝不崩溃
+  function getPrompt(scene, dm, online) {
+    const cus = getUserCustomSystem();
+    if (cus) return cus;
+    const key = (dm && dm.internal) ? "internal" : "heritage";
+    const dom = (window.SHUILI_AI_PROMPTS && window.SHUILI_AI_PROMPTS.domain && window.SHUILI_AI_PROMPTS.domain[key]) || null;
+    if (dom) {
+      let p = dom[scene];
+      if (p && typeof p === "object") p = online ? (p.online || p.local) : (p.local || p.online);
+      if (typeof p === "string" && p) {
+        const appName = (dm && dm.appName) ? dm.appName : "本应用";
+        return p.replace(/__APP__/g, appName);
+      }
+    }
+    return (window.SHUILI_AI_PROMPTS && window.SHUILI_AI_PROMPTS.fallback) || "你是智能分析助手。";
+  }
+  // 🅳 D5 多轮会话：维护最近 N 轮短期上下文（与 Hermes 长期记忆区分），注入模型调用
+  const _SESSION_MAX = 8;
+  let _sessionTurns = [];
+  function pushSession(role, content) {
+    if (!content) return;
+    _sessionTurns.push({ role: role, content: String(content).slice(0, 1200) });
+    const cap = _SESSION_MAX * 2;
+    if (_sessionTurns.length > cap) _sessionTurns.splice(0, _sessionTurns.length - cap);
+  }
+  function sessionMessages() { return _sessionTurns.map(function (t) { return { role: t.role, content: t.content }; }); }
+  function clearSession() { _sessionTurns = []; }
   // ---------- 智能查询 ----------
   // 需求①：联网在线查询开关（仅内部台账域 水利/感知 显示，默认本地查询）
   const ONLINE_KEY = "ai_online_v1";
