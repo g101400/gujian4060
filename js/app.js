@@ -120,7 +120,7 @@
   });
 
   // 全局版本号（单一事实来源：关于 / 版本变更 / 帮助 均引用此处，避免硬编码漂移）
-  const APP_VER = "v2.4.8";
+  const APP_VER = "v2.5.0";
 
   // ---------- 状态 ----------
   let BASE = [], DELTA = { added: [], updated: {}, deleted: [] }, records = [];
@@ -129,6 +129,7 @@
   const filterActive = () => !!(filter.province.length || filter.city.length || filter.atype.length || (filter.q && filter.q.trim()) || (filter.photo && filter.photo.mode !== "all"));
   let vecLayer = null, cvaLayer = null, imgLayer = null, ciaLayer = null, basemapOn = false, layerType = "vec";
   let lastCenter = null, myLoc = null, myLocMarker = null;
+  let lastWindowId = null;   // C1：记住上次返回的收藏窗口，下次进入自动恢复该视图
   let measureMode = false, measurePts = [], measureLine = null;
   let nearbyCenter = null, nearbyRadius = null, nearbyCircle = null, nearbyAtypes = [];
   const DEFAULT_CENTER = [39.9163, 116.3972]; // 北京故宫 质心
@@ -161,14 +162,24 @@
       meteredHint: (type && type !== "wifi" && type !== "") // 非 wifi 视为可能走流量
     };
   }
-  // 大流量确认：非 WiFi 时警告（items 1/2：可能 >3GB）
-  function confirmLargeTransfer(title) {
-    const n = netInfo();
+  // v2.4.9：大文件确认（尺寸驱动）
+  //  · 本地导入导出不消耗流量 → 不再提示流量
+  //  · 文件较小（< BIG_TRANSFER）或无尺寸信息 → 直接放行，不弹窗
+  //  · 文件较大 → 标题「操作提示」，内容「文件大小为 X，耗时较长，是否继续？」
+  const BIG_TRANSFER = 50 * 1048576; // 50MB：超过才提示耗时
+  function fmtSizeBytes(b) {
+    const n = Number(b) || 0;
+    if (n >= 1073741824) return (n / 1073741824).toFixed(2) + "GB";
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + "MB";
+    if (n >= 1024) return Math.round(n / 1024) + "KB";
+    return n + "B";
+  }
+  function confirmLargeTransfer(title, sizeBytes) {
+    const size = Number(sizeBytes) || 0;
     return new Promise((resolve) => {
-      if (n.wifi || !n.online) return resolve(true); // WiFi 或离线（离线说明本地操作，无需流量）
-      const html = `<div class="hint" style="color:#e67e22">⚠️ 当前<b>未连接 WiFi</b>（连接类型：${esc(n.type || "未知")}），传输超大文件（可能 >3GB）将消耗大量移动流量，可能产生资费。</div>
-        <div class="hint">建议：连接 WiFi 后再操作；或确认流量充足后继续。</div>`;
-      openModal(title || "大流量提醒", html, `<button class="btn ghost" id="ltCancel">取消</button><button class="btn primary" id="ltGo">仍要继续</button>`);
+      if (!size || size < BIG_TRANSFER) return resolve(true); // 小文件/未知大小：不打扰
+      const html = `<div class="hint">文件大小为 <b>${fmtSizeBytes(size)}</b>，耗时较长，是否继续？</div>`;
+      openModal("操作提示", html, `<button class="btn ghost" id="ltCancel">取消</button><button class="btn primary" id="ltGo">继续</button>`);
       el("ltCancel").onclick = () => { closeModal(); resolve(false); };
       el("ltGo").onclick = () => { closeModal(); resolve(true); };
     });
@@ -306,6 +317,15 @@ function back() {
     DELTA = await Store.get();
     applyDims();
     merge();
+    // C5 首开默认：5 类常见古建（古塔/寺庙/城墙/故居/古街）
+    // 双重校验：类型须在「当前城市作用域」内实际存在才勾选；
+    // 若一类都不存在则回落空选(= 显示全部)，避免首开白屏。
+    if (!Store.ui.get()) {
+      const DEF_ATYPES = ["古塔", "寺庙", "城墙", "故居", "古街"];
+      const scope = filter.city.length ? records.filter((r) => filter.city.includes(r.city)) : records;
+      filter.atype = DEF_ATYPES.filter((t) => scope.some((r) => r.atype === t));
+      saveUI();
+    }
     render();
   }
   function merge() {
@@ -363,6 +383,7 @@ function back() {
       basemapOn = s.basemap === true;
       layerType = (s.layer === "img") ? "img" : "vec";
       lastCenter = s.center || null;
+      lastWindowId = s.lastWindowId || null;   // C1：恢复上次的收藏窗口 id
     } else {
       // 首次打开：默认「北京」(数据城市字段值为"北京"非"北京市")，仅载北京古建→开图更快；不加载底图
       filter.province = [];
@@ -374,7 +395,7 @@ function back() {
     }
   }
   function saveUI() {
-    Store.ui.set({ province: filter.province, city: filter.city, atype: filter.atype, basemap: basemapOn, layer: layerType, center: lastCenter });
+    Store.ui.set({ province: filter.province, city: filter.city, atype: filter.atype, basemap: basemapOn, layer: layerType, center: lastCenter, lastWindowId });
   }
 
   // ---------- 地图 ----------
@@ -383,13 +404,13 @@ function back() {
   const tdtUrl = (lyr) => `https://t{s}.tianditu.gov.cn/${lyr}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${lyr}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU}`;
   function initMap() {
     // attributionControl 去掉默认「Leaflet」外链（https://leafletjs.com）：离线/弱网点该链接会 ERR_CONNECTION_TIMED_OUT；本地资源已离线化
-    map = L.map("map", { zoomControl: true, attributionControl: L.control.attribution({ prefix: false }) }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+    map = L.map("map", { zoomControl: true, preferCanvas: true, attributionControl: L.control.attribution({ prefix: false }) }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
     const baseOpts = TDT_BASEOPTS, tk = tdtUrl;
     vecLayer = L.tileLayer(tk("vec"), baseOpts);
     cvaLayer = L.tileLayer(tk("cva"), baseOpts);
     imgLayer = L.tileLayer(tk("img"), baseOpts);
     ciaLayer = L.tileLayer(tk("cia"), baseOpts);
-    layerGroup = L.layerGroup().addTo(map);
+    layerGroup = L.featureGroup().addTo(map); // 2026-09-16 修复：L.layerGroup 无 getBounds()，fitToShown 运行时报错；featureGroup 继承 layerGroup 且自带 getBounds（与水利端 2026-08-20 修复对齐）
     overlayGroup = L.layerGroup().addTo(map); // 测距 / 周边 等叠加层，render() 不清空
     ckLayer = L.layerGroup().addTo(map); // 打卡足迹叠加层（金色 #e0a93c）
     map.on("popupopen", onPopupOpen);
@@ -1284,7 +1305,7 @@ function popupHtml(r) {
     await importCpResumePrompt(kind); // 若上次导入被中断，提示用户（item 1/2 续传）
     // 大文件流量提醒（items 1/2：文件夹/zip 可能含大量照片 >3GB）
     if (mode === "folder" || mode === "zip") {
-      const go = await confirmLargeTransfer("批量导入（可能含大量文件）");
+      const go = await confirmLargeTransfer("批量导入（可能含大量文件）", 0); // 本地读取，无流量；无尺寸不打扰
       if (!go) { importCpEnd(); return; }
     }
     pendingBatch[kind === "photos" ? "photos" : "sheets"] = [];
@@ -1473,7 +1494,7 @@ function popupHtml(r) {
   function exportPhotosMenu() {
     const hasFilter = filter.city.length || filter.atype.length || filter.q;
     const recsAll = records, recsFiltered = records.filter(passFilter);
-    const html = `<div class="field"><label>导出范围</label>
+    const html = `<div class="hint" id="phStat" style="background:#eef4ff;color:#1e40af;border-radius:8px;padding:8px 10px;margin-bottom:10px">正在统计…</div>\n<div class="field"><label>导出范围</label>
         <select id="phScope"><option value="all">全部古建（${recsAll.length}）</option>${hasFilter ? `<option value="filtered" selected>当前筛选（${recsFiltered.length}）</option>` : ""}</select></div>
       <div class="field"><label>压缩格式</label>
         <select id="phFmt"><option value="zip">zip（推荐，通用）</option><option value="7z">7z（当前环境降级为 zip）</option></select></div>
@@ -1503,6 +1524,33 @@ function popupHtml(r) {
       <div class="hint">照片按所选层次分文件夹（默认「城市 / 古建_序号.扩展名」）；压缩包内含 manifest.json，可<b>确定性重新导入</b>（自动绑定到原古建，无需逐张人工选择）。</div>`;
     openModal("导出照片", html, `<button class="btn ghost" id="phCancel">取消</button><button class="btn primary" id="phGo">导出</button>`);
     el("phCancel").onclick = closeModal;
+    // ---------- v2.4.9-A 实时统计：将导出 N 个建筑物 / M 张照片（随范围与管理所勾选联动）----------
+    const phHasSrc = (p) => !!(p && (p.full || p.dataUrl || p.thumb || p.b64));
+    const phCount = (rs) => rs.reduce((n, r) => n + ((r.photos || []).filter(phHasSrc).length), 0);
+    const phStatUpdate = () => {
+      const box = document.getElementById("phStat"); if (!box) return;
+      const scopeEl = document.getElementById("phScope");
+      let rs = (scopeEl && scopeEl.value === "filtered") ? recsFiltered : recsAll;
+      const cbs = document.querySelectorAll("#phOffices .ofc-cb");
+      if (cbs && cbs.length) {
+        const checked = []; for (let i = 0; i < cbs.length; i++) if (cbs[i].checked) checked.push(cbs[i].value);
+        if (checked.length && checked.length < cbs.length) {
+          const want = checked.map((o) => (typeof normOffice === "function" ? normOffice(o) : o));
+          rs = rs.filter((r) => {
+            const v = typeof normOffice === "function" ? normOffice((typeof orgVal === "function" ? orgVal(r, "office") : r.office)) : r.office;
+            return want.indexOf(v) >= 0;
+          });
+        }
+      }
+      box.innerHTML = "将导出：<b>" + rs.length + "</b> 个对象 / <b>" + phCount(rs) + "</b> 张照片" +
+        (rs.length ? "" : "（可切换导出范围或勾选更多管理所）");
+    };
+    const phScopeEl = document.getElementById("phScope"); if (phScopeEl) phScopeEl.onchange = phStatUpdate;
+    const phCbs = document.querySelectorAll("#phOffices .ofc-cb");
+    for (let i = 0; i < phCbs.length; i++) phCbs[i].onchange = phStatUpdate;
+    phStatUpdate();
+    // ---------- /v2.4.9-A ----------
+
     // 组合段（v2.4）
     const segValOf = (r, seg) => seg === "city" ? citySafe(r.city) : seg === "province" ? (r.province || "")
       : seg === "atype" ? (r.atype || "") : (r.name || "");
@@ -1545,7 +1593,13 @@ function popupHtml(r) {
     const safe = (s) => (s || "古建").replace(/[\\/:*?"<>|\n\r]+/g, "_").slice(0, 40);
     const citySafe = (s) => (s || "未分类城市").replace(/[\\/:*?"<>|\n\r]+/g, "_").slice(0, 30);
     for (const r of recs) {
-      if (opts.offices && opts.offices.length && !opts.offices.includes(normCity(r.city))) continue; // v2.4：城市过滤
+      // ---------- v2.4.9-B 城市过滤双向归一化 ----------
+      if (opts.offices && opts.offices.length) {
+        const wantCJ = opts.offices.map((o) => normCity(o));
+        const vCJ = normCity(r.city);
+        if (wantCJ.indexOf(vCJ) < 0 && !(Array.isArray(r.city) && r.city.some((x) => wantCJ.indexOf(normCity(x)) >= 0))) continue;
+      }
+      // ---------- /v2.4.9-B ----------
       const phs = r.photos || [];
       for (let i = 0; i < phs.length; i++) {
         const ph = phs[i];
@@ -1561,11 +1615,16 @@ function popupHtml(r) {
           }
         }
         if (!b64) {
-          if (!ph.dataUrl || !ph.dataUrl.startsWith("data:")) continue;
-          const comma = ph.dataUrl.indexOf(",");
-          b64 = ph.dataUrl.substring(comma + 1);
-          const mime = ph.dataUrl.substring(5, ph.dataUrl.indexOf(";")).replace("/", ".");
-          ext = mime.includes("png") ? "png" : mime.includes("gif") ? "gif" : mime.includes("webp") ? "webp" : "jpg";
+          // ---------- v2.4.9-C 多字段兜底：full / dataUrl / thumb / b64 任一可用即导出 ----------
+          const src = [ph.dataUrl, ph.full, ph.thumb].filter((s) => s && String(s).startsWith("data:"))[0] || "";
+          if (src) {
+            const comma = src.indexOf(",");
+            b64 = src.substring(comma + 1);
+            const mime = src.substring(5, src.indexOf(";")).replace("/", ".");
+            ext = mime.includes("png") ? "png" : mime.includes("gif") ? "gif" : mime.includes("webp") ? "webp" : "jpg";
+          } else if (ph.b64) { b64 = ph.b64; ext = "jpg"; }
+          else continue;
+          // ---------- /v2.4.9-C ----------
         }
         // 按城市分文件夹：城市/古建_序号.ext
         const phName = `${citySafe(r.city)}/${safe(r.name)}_${i + 1}.${ext}`;
@@ -1578,7 +1637,7 @@ function popupHtml(r) {
       // v2.2 问题①根因防护：Web/PWA/UOS/Win 上"没有可导出照片"通常是导入未成功（照片数据从未落库），而非导出代码缺路径——给可操作指引而非只报一句。
       const plat = (window.AndroidBridge && window.AndroidBridge.exportFilesToTree) ? "安卓" : "当前平台（统信 UOS / Web / PWA / Win11）";
       return openModal("没有可导出照片",
-        `<div class="hint">所选范围内没有照片数据。</div>
+        `<div class="hint">所选范围内没有照片数据（范围内 <b>${recs.length}</b> 个对象，其中 <b>${recs.filter((r) => (r.photos || []).length).length}</b> 个带照片记录）。</div>
          <div class="hint">常见原因：在本平台<b>尚未成功导入照片</b>（照片数据未落库）。</div>
          <div class="hint">🟢 解决路径：<br>
          · 统信 UOS（内存仅 8G）：请用菜单「传输与共享 → 从安卓复制照片」做<b>目录流式导入</b>（免整包入内存，避免崩溃）；<br>
@@ -1587,7 +1646,8 @@ function popupHtml(r) {
         `<button class="btn primary" onclick="APP.close()">知道了</button>`);
     }
     // 大文件流量提醒
-    const go = await confirmLargeTransfer(`导出 ${files.length} 张照片（可能很大）`);
+    const _phSize = files.reduce((a, f) => a + Math.floor(String(f.b64 || "").length * 0.75), 0);
+    const go = await confirmLargeTransfer(`导出 ${files.length} 张照片`, _phSize);
     if (!go) { closeModal(); return; }
     closeModal();
     busy("正在生成照片压缩包，请稍后…");
@@ -1785,14 +1845,15 @@ function popupHtml(r) {
     if (!["kml", "csv", "kmz", "ovkmz", "xls", "xlsx", "ovobj", "obj"].includes(ext)) return toast("不支持的格式：" + ext);
     // 大文件流量提醒（items 1/2：kmz/ovkmz 可能含大量照片 >3GB）
     if (ext === "kmz" || ext === "ovkmz") {
-      const go = await confirmLargeTransfer("导入 kmz/ovkmz（可能含大量照片）");
+      const go = await confirmLargeTransfer("导入 kmz/ovkmz", file.size);
       if (!go) return;
     }
     try {
       busy("正在解析导入文件，请稍后…");
       let recs, bufBytes = null;
-      if (ext === "kml") { recs = IO.parseKmlToRecords(await file.text()); }
-      else if (ext === "csv") { recs = IO.parseCsvToRecords(await file.text()); }
+      // v2.4.9-C：CSV/KML 先读字节再自动识别编码（奥维导出多为 GBK，直接 file.text() 会乱码）
+      if (ext === "kml") { const ab = await file.arrayBuffer(); bufBytes = new Uint8Array(ab); recs = IO.parseKmlToRecords(IO.decodeText(bufBytes)); }
+      else if (ext === "csv") { const ab = await file.arrayBuffer(); bufBytes = new Uint8Array(ab); recs = IO.parseCsvToRecords(IO.decodeText(bufBytes)); }
       else if (ext === "xlsx") { const ab = await file.arrayBuffer(); bufBytes = new Uint8Array(ab); recs = await IO.parseXlsxToRecords(bufBytes); }
       else if (ext === "xls") { const txt = await file.text(); bufBytes = IO.utf8(txt); recs = IO.parseXlsToRecords(txt); }
       else if (ext === "ovobj" || ext === "obj") {
@@ -1906,8 +1967,9 @@ function popupHtml(r) {
     el("exCancel").onclick = closeModal;
     // 导出可选列（#39）：csv/chaohe 时显示列多选，默认全选
     const EX_COLS = {
-      csv: [["folder", "文件夹"], ["name", "名称"], ["lon", "经度"], ["lat", "纬度"], ["comment", "Comment"]],
-      chaohe: [["name", "名称"], ["city", "城市"], ["station", "区县"], ["atype", "古建类型"], ["lon", "经度"], ["lat", "纬度"], ["comment", "说明"]],
+      // v2.4.9-C：列键与 io.buildCsv(keys: name/office/station/btype/lat/lon/params) 严格对齐
+      csv: [["name", "名称", true], ["office", "管理所", true], ["station", "管理站", true], ["btype", "建筑物类型", true], ["lat", "纬度", true], ["lon", "经度", true], ["params", "Comment", true], ["folder", "文件夹", false]],
+      chaohe: [["name", "名称"], ["office", "管理所"], ["station", "管理站"], ["btype", "建筑物类型"], ["lon", "经度"], ["lat", "纬度"], ["comment", "说明"]],
       xlsx: [["name", "名称"], ["province", "省份"], ["city", "城市"], ["station", "区县"], ["atype", "古建类型"], ["lon", "经度"], ["lat", "纬度"], ["desc", "说明"]],
       xls: [["name", "名称"], ["province", "省份"], ["city", "城市"], ["station", "区县"], ["atype", "古建类型"], ["lon", "经度"], ["lat", "纬度"], ["desc", "说明"]],
       ovobj: [["name", "名称"], ["city", "城市"], ["station", "区县"], ["atype", "古建类型"], ["lon", "经度"], ["lat", "纬度"], ["desc", "说明"]],
@@ -1950,7 +2012,8 @@ function popupHtml(r) {
       const base = fnameRaw ? fnameRaw.replace(/\.[^.]+$/, "") : "古建基础信息";
       // 大文件流量提醒（items 1/2：ovkmz/kmz 含照片可能 >3GB）
       if (fmt === "ovkmz" || fmt === "kmz") {
-        const go = await confirmLargeTransfer("导出 " + fmt.toUpperCase() + "（含照片，可能很大）");
+        const _sz = (typeof sel !== "undefined" && sel ? sel : []).reduce((a, r) => a + (r.photos || []).reduce((b, ph) => b + Math.floor(String(ph.dataUrl || ph.full || "").length * 0.75), 0), 0);
+        const go = await confirmLargeTransfer("导出 " + fmt.toUpperCase(), _sz);
         if (!go) return;
       }
       // 导出前先显示「执行中」遮罩：含照片的 kmz/ovkmz 在 JS 端打包 base64 可能较慢，避免"点了没反应"
@@ -2162,6 +2225,16 @@ function popupHtml(r) {
       <b>⬆️ 升级与备份</b>：菜单→设置→软件升级，公开版/内部版均经<b>百度网盘自动升级</b>（填入 latest.json 直读地址即可，下载填网盘分享链接）；升级前先「升级数据导出」（可自定义文件夹/文件名，默认「古建一张图备份+日期.bak」），该包可回灌「升级数据导入」（会覆盖本机全部数据，已明确提示风险）。<br>
       <b>📝 游记</b>：古建「写游记」——所见即所得（字体/字号/表情/图片/表格），默认绑定古建，关键词筛选，导出 MD+JSON，内容镜像知识库供 AI 查询。<br>
       <b>🤖 智能 AI</b>：智能查询/智能问询/AI 更新/纠错/对话，均基于已接入的大模型（设置→大模型 AI 设置 配置密钥与地址）；联网开启时本地无果可联网兜底，答案标注来源。<br>
+      <hr style="border:none;border-top:1px dashed var(--line);margin:10px 0">
+      <b>🔎 知识库增强（v2.4.8）</b>：<b>模糊检索</b>错字 / 缺字 / 语序不同也能命中（结果带相关度百分比）；<b>提示词生成</b>把「问题 + 知识库最相关片段 + 长期记忆」自动拼成完整提示词，可复制自用或直接投喂大模型；<b>存疑与反向查询</b>可对任一条目打标并反查知识库辅助核实；设置新增「<b>通过 GitHub 升级</b>」（内部版查 *-internal-4060、公开版查 *-public-4060，与网盘双通道隔离一致）。<br>
+      <b>🔐 启动口令保护（内部版，v2.4.9）</b>：首次启动校验启动口令，支持「记住本机 / 修改口令 / 忘记口令」；忘记口令时请联系软件开发者或管理员协助重置（出厂口令见交付说明）。公开版与古建为单通道发布，无启动口令。<br>
+      <b>📶 智能传输提示</b>：本机导入 / 导出（不走网络）不再弹流量提醒；小文件直接执行；仅大文件（≥50MB）弹「操作提示」并显示文件大小与耗时提醒。<br>
+      <b>🖼️ 图片预览增强</b>：电脑端鼠标<b>拖拽平移 + 滚轮缩放</b>（1~5 倍），手机端<b>双指缩放 + 拖动</b>，长按可调出菜单；键盘 + / − / 方向键 / 0 复位亦可用。<br>
+      <b>📝 笔记导出</b>：备忘录 / 运维记录 / 游记支持一键<b>导出 Word（.doc）</b>与<b>导出 PDF</b>（走系统打印「另存为 PDF」）。<br>
+      <b>🧭 对象智能检索</b>（菜单 → 对象智能检索）：<b>参数反查</b>（按参数键 / 值反查对象）、<b>分类统计</b>（按类型 / 管理所 / 参数汇总）、<b>类型定义入库</b>（向量化后参与检索）、<b>预案文档关联</b>、<b>生成说明文档</b>（可导出 Word / PDF）、<b>PDF 转 Word</b>。<br>
+      <b>📊 表格导入导出规范化</b>：导入奥维导出的 CSV 自动识别编码（UTF-8 / GBK / GB18030 / Big5），不再报「未找到名称列」；导出 CSV 第 8 列为 <b>Comment</b>、多参数以「<b>|</b>」分隔并新增「文件夹」列（管理处 / 管理所 / 段--类型）；导出的表格可原样回导；ovkmz 备注按「键 : 值|」换行输出，与奥维一致。<br>
+      <b>🏷️ 管理所智能识别</b>：9 所标准名单模糊匹配 + 潮河 / 水库特例归并 + 「站」归为所的下一级；导入 / 导出 / 筛选三处口径统一。<br>
+      <b>⛶ 图片 / 文档导出</b>：对象智能检索与笔记页均可「导出 PDF」；导出的 PDF 直接用系统打印对话框「另存为 PDF」保存。<br>
       <b>🐞 错误日志</b>：菜单→信息与帮助→错误日志，全局捕获运行错误（环形缓冲），可查看/复制/清空，便于反馈排查。
     </div>`;
     openModal("帮助", html, `<button class="btn ghost" onclick="APP.close()">知道了</button>`);
@@ -2211,6 +2284,12 @@ function popupHtml(r) {
   }
   // 版本变更：单一来源 APP_VER + 内置变更摘要（与文档同步维护）
   const CHANGELOG = [
+    ["v2.5.0", "2026-09-11", [
+      "古建端同步双数据层接入点：升级包 schema 升到 5（感知端 delta_bld 字段在古建端保持空占位，跨端导入兼容不报错）",
+      "机构名单一致性：城市与省份在「筛选」与「设置」同一份、同顺序；筛选打开前 pruneFilter 自动清失效条件",
+      "帮助文档同步：菜单间距、传输提示、备份导入导出与其它端完全一致"
+    ]],
+    ["v2.4.9", "2026-09-11", ["复制密钥对话框不再显示明文口令（访问口令仅见交付说明），对话框与提示语统一去除明文", "智能传输提示：本机导入 / 导出（不走网络）不再弹流量提醒、小文件直接执行不打扰；仅大文件（≥50MB）改弹「操作提示」并显示文件大小与耗时提醒", "子菜单「隐藏 / 收藏」按钮与菜单文字间距拉大，避免误触（仍为长按触发 + 二次确认）", "修复导入「未找到名称列」：奥维导出的 GBK / ANSI 编码 CSV 不再乱码——按 BOM / UTF-8 / GB18030 / GBK / Big5 自动识别编码", "CSV 导出列规范化：第 8 列「参数说明」改为「Comment」，多参数分隔符由「;」改为「|」，并新增「文件夹」列（管理处 / 管理所 / 段--类型），与奥维导入格式对齐", "导入兼容自身导出：参数分隔符「|」「;」与半角「:」/ 全角「：」均可解析，导出的表格重新导入后参数可正常显示到古建详情", "ovkmz 导出备注：参数按「键 : 值|」并换行组织，与奥维原装格式一致", "管理所智能识别：9 所标准名单模糊匹配 + 潮河 / 水库特例归并 + 「站」归为所的下一级；导入、导出、筛选三处口径统一", "导出前实时统计「将导出 N 个古建 / M 张照片」（随范围与管理所勾选联动）；照片导出补 full → dataUrl → thumb 兜底链，三者皆空时明确提示并写入错误日志", "图片预览增强：电脑端支持鼠标拖拽平移 + 滚轮缩放（1~5 倍），手机端支持双指缩放 + 拖动 + 长按菜单，另支持键盘 + / - / 方向键 / 0 复位", "游记 / 备忘录新增「导出 Word」「导出 PDF」（PDF 走系统打印「另存为 PDF」）", "新增「对象智能检索」菜单组：参数反查 / 分类统计 / 类型定义入库（向量化）/ 预案文档关联 / 生成说明文档 / PDF 转 Word，并支持导出 Word 与 PDF"]],
     ["v2.4.8", "2026-09-07", ["知识库智能化：新增「知识库模糊检索」——错字/缺字/语序不同也能命中（如「跌水闸」可命中「跌水节制闸」），结果带相关度百分比，可对任一条目直接反向查询或标为存疑", "新增「提示词生成」：问题 + 知识库最相关片段 + 长期记忆自动拼装成完整提示词，可复制自用或直接投喂大模型；AI 查询结果新增「查看提示词」按钮", "新增「AI 记忆（Hermes）」：查询/纠错/存疑自动沉淀为记忆并在提示词中引用，支持查看、按关键词检索、一键清空（不影响知识条目）", "新增「存疑与反向查询」：不确定的内容可打存疑标记（标签：存疑/待核实），系统用其内容反向检索知识库给出最相关条目辅助核实；AI 查询结果可一键「标为存疑」", "修复重要缺陷：AI 调用时已生成知识库上下文却仍把原始问题发给模型（知识库等于没接上），现已真正随请求发送", "设置新增「通过 GitHub 升级」子菜单（内部版查 *-internal-4060、公开版查 *-public-4060，与网盘双通道隔离一致；私有库支持填 GitHub 只读 Token）", "菜单可隐藏：长按任意菜单项选择隐藏，设置中「恢复隐藏子菜单 / 隐藏子菜单列表」随时恢复，恢复入口受保护不会被自己锁死", "导出位置可自定义：设置「导出文件位置」预配置默认文件夹，导出前可询问（批量导出只问一次），知识库导出默认名改为「知识库YYYY-MM-DD」", "奥维 ovkmz 互通修复：导入剥除 UTF-8 BOM（原装文件不再报 xml 语法错误）、附件路径归一（照片不再只显示占位符）；导出照片目录对齐原装 ovatta/、参数分隔符对齐「键 : 值|」"]],
     ["v2.4.7", "2026-09-05", ["升级按钮与自动升级：设置菜单新增「检查新版本」一键检测（百度网盘）；发现新版自动下载安装包（直链走 fetch 分块下载+进度；百度网盘分享页自动打开并备好提取码），可在升级对话框关闭自动下载", "古建改单通道：数据本身公开、两端全功能，取消内部分版——构建只出一套包，升级走 public 通道", "发版自动上传百度网盘：构建收尾自动上传安装包 + latest.json 到网盘发布目录（未登录时优雅跳过）"]],
     ["v2.4.6", "2026-09-05", ["知识库智能框架：保存即「切片+向量化」——句子级切片（尽量保持语句完整，长段按句切且重叠衔接），离线哈希向量（中英文混排，零外部依赖）+ 关键词命中 = 混合检索；支持反向查询（内容→条目）、模糊/语义查询、智能生成提示词", "引入记忆管理（MEMORY）与 Hermes 自我学习机制，并与已接入大模型有机融合（AI 提示词自动拼装 KB 精准片段 + 自学习记忆），统一上下文检索入口", "升级体系升级：古建内部版与公开版均可经百度网盘自动升级（latest.json 直读清单 + download 填网盘分享链接）；升级数据导出支持自定义文件夹/文件名（默认「古建一张图备份+日期.bak」），导出文件可回灌导入并提示覆盖全部数据风险", "修复「写游记」菜单 script error：journal.js 全面 ES5 兼容 + 全局 helper 缺失时 fail-loud；app.js 顶部注入 NodeList.forEach 等老 WebView 兼容垫片，杜绝白屏与裸 script error", "内置轻量 OCR（tesseract.js 本地资产 chi_sim/eng，离线）：扫描件 PDF 与 jpg/png/bmp/webp 图片自动识别文字入库，懒加载不拖启动", "新增「信息与帮助→四端功能对照单/版本变更/功能介绍」全部同步到最新（含 v2.4.4~v2.4.6 新增能力）"]],
@@ -2513,7 +2592,13 @@ function popupHtml(r) {
       if (ph && ph.fullPath && window.AndroidBridge && window.AndroidBridge.loadFullImage) {
         try { const full = window.AndroidBridge.loadFullImage(ph.fullPath); if (full && full.startsWith("data:")) return resolve(full); } catch (e) {}
       }
-      resolve(ph ? (ph.dataUrl || "") : "");
+      // v2.4.9：兜底链 full → dataUrl → thumb；三者皆空时明确提示 + 入错误日志，不再白屏
+      const src = (ph && (ph.full || ph.dataUrl || ph.thumb)) || "";
+      if (!src) {
+        try { if (window.__ERR_LOG_PUSH__) window.__ERR_LOG_PUSH__("照片数据缺失（无可用图像源）：" + JSON.stringify({ cap: ph && ph.caption, keys: ph ? Object.keys(ph) : [] })); } catch (e) {}
+        try { if (typeof toast === "function") toast("该照片数据缺失（原始图像未随文件导入）"); } catch (e) {}
+      }
+      resolve(src);
     });
   }
   async function openPhoto(rid, pi) {
@@ -2589,6 +2674,41 @@ function popupHtml(r) {
     img.addEventListener("mousedown", startLP);
     img.addEventListener("mouseup", cancelLP);
     img.addEventListener("mouseleave", cancelLP);
+    // ---------- v2.4.9-D 电脑端：鼠标拖拽平移 + 滚轮缩放（与手机端手势并存）----------
+    let mDown = false, mMoved = false, mSX = 0, mSY = 0, mTX = 0, mTY = 0;
+    img.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      mDown = true; mMoved = false; mSX = e.clientX; mSY = e.clientY; mTX = tx; mTY = ty;
+    });
+    document.addEventListener("mousemove", (e) => {
+      if (!mDown) return;
+      const dx = e.clientX - mSX, dy = e.clientY - mSY;
+      if (!mMoved && Math.abs(dx) + Math.abs(dy) > 4) { mMoved = true; cancelLP(); img.style.cursor = "grabbing"; }
+      if (mMoved && scale > 1) { tx = mTX + dx; ty = mTY + dy; clampT(); applyT(); }
+    });
+    document.addEventListener("mouseup", () => {
+      if (!mDown) return;
+      mDown = false; img.style.cursor = scale > 1 ? "grab" : "zoom-in";
+    });
+    img.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const step = e.deltaY < 0 ? 0.25 : -0.25;
+      scale = Math.max(1, Math.min(5, scale + step));
+      if (scale === 1) { tx = 0; ty = 0; } else { clampT(); }
+      applyT();
+    }, { passive: false });
+    img.style.cursor = "zoom-in";
+
+    function onKeyLb(e) {
+      if (!el("lightbox").classList.contains("show")) return;
+      if (e.key === "+" || e.key === "=") { scale = Math.min(5, scale + 0.25); applyT(); }
+      else if (e.key === "-" || e.key === "_") { scale = Math.max(1, scale - 0.25); if (scale === 1) { tx = 0; ty = 0; } applyT(); }
+      else if (e.key === "ArrowLeft") switchPhoto(-1);
+      else if (e.key === "ArrowRight") switchPhoto(1);
+      else if (e.key === "0") resetT();
+    }
+    if (!window.__lbKeyBound) { window.__lbKeyBound = 1; document.addEventListener("keydown", onKeyLb); }
+    // ---------- /v2.4.9-D ----------
     el("lbPrev").onclick = () => switchPhoto(-1);
     el("lbNext").onclick = () => switchPhoto(1);
     el("lbSave").onclick = saveCurrentPhoto;
@@ -2670,6 +2790,7 @@ function popupHtml(r) {
         const name = (el("favName").value || def).trim() || def;
         const entry = { id: "w" + Date.now().toString(36), name, bounds, center, zoom };
         setFavs(favs.concat([entry]));
+        lastWindowId = entry.id; saveUI();   // C1：记住本次收藏为「上次窗口」
         closeModal();
         toast("已收藏窗口：" + name + "（点 📍 返回）");
       };
@@ -2681,12 +2802,15 @@ function popupHtml(r) {
         if (s.fav && s.fav.lat != null) { return flyToFav({ center: [s.fav.lat, s.fav.lng], zoom: s.fav.zoom }); } // 兼容旧版单点收藏
         return toast("尚未收藏窗口，请先点 ⭐ 收藏当前窗口");
       }
-      if (favs.length === 1) { flyToFav(favs[0]); return toast("已返回收藏窗口：" + favs[0].name); }
+      if (favs.length === 1) {
+        lastWindowId = favs[0].id; saveUI();   // C1：记住本次返回为「上次窗口」
+        flyToFav(favs[0]); return toast("已返回收藏窗口：" + favs[0].name);
+      }
       const html = favs.map((f, i) => `<div class="fav-item" data-i="${i}"><span class="fi-ico">🪟</span><span class="fi-name">${esc(f.name)}</span><span class="fi-meta">缩放 ${f.zoom}</span></div>`).join("");
       openModal("返回收藏窗口", `<div class="hint">选择一个窗口返回（按记录范围 + 缩放居中）：</div><div class="filelist">${html}</div>`, `<button class="btn ghost" id="favClose">关闭</button>`);
       el("favClose").onclick = closeModal;
       document.querySelectorAll(".fav-item").forEach((it) => {
-        it.onclick = () => { const i = +it.dataset.i; closeModal(); flyToFav(favs[i]); toast("已返回收藏窗口：" + favs[i].name); };
+        it.onclick = () => { const i = +it.dataset.i; lastWindowId = favs[i].id; saveUI(); closeModal(); flyToFav(favs[i]); toast("已返回收藏窗口：" + favs[i].name); };
       });
     }
     // 三击地图任意处 → 强制恢复主菜单（测距/选点模式不触发，避免误操）
@@ -2782,6 +2906,119 @@ function popupHtml(r) {
     } catch (e) { return []; }
   }
   function saveHiddenMenus(a) { try { localStorage.setItem(HM_KEY, JSON.stringify(a)); } catch (e) {} }
+
+  // ---------- v2.4.9：子菜单「隐藏 / 收藏」按钮（带二次确认，防误点）----------
+  var MACT_PREF = HM_KEY + "_macts";
+  function mactsEnabled() { try { return localStorage.getItem(MACT_PREF) !== "0"; } catch (e) { return true; } }
+  function setMactsEnabled(on) { try { localStorage.setItem(MACT_PREF, on ? "1" : "0"); } catch (e) {} }
+  function isFavAct(a) { try { return loadQuickFavs().indexOf(a) >= 0; } catch (e) { return false; } }
+  function clearMenuActs(root) {
+    var as = (root || document).querySelectorAll(".macts");
+    for (var i = 0; i < as.length; i++) { if (as[i].parentNode) as[i].parentNode.removeChild(as[i]); }
+  }
+  // 同步已注入按钮的显示状态（收藏星标 / 保护项置灰）
+  function syncMacts(wrap, act) {
+    if (!wrap) return;
+    var cs = wrap.children || [];
+    for (var i = 0; i < cs.length; i++) {
+      var c = cs[i];
+      if (!c.classList) continue;
+      if (c.classList.contains("hide")) {
+        var prot = HM_PROTECT.indexOf(act) >= 0;
+        if (prot) { c.classList.add("disabled"); c.setAttribute("title", "该菜单是恢复入口，不允许隐藏"); }
+      } else {
+        var on = isFavAct(act);
+        if (on) c.classList.add("on"); else c.classList.remove("on");
+        c.setAttribute("title", on ? "移出快捷常用" : "加入快捷常用");
+        c.textContent = on ? "\u2605" : "\u2606";
+      }
+    }
+  }
+  // 给抽屉内每个子菜单注入「收藏 / 隐藏」按钮
+  function decorateMenuButtons() {
+    var root = (document.getElementById && document.getElementById("drawer")) || document;
+    if (!root || !root.querySelectorAll) return;
+    if (!mactsEnabled()) { clearMenuActs(root); return; }
+    var btns = root.querySelectorAll(".menu-btn");
+    for (var i = 0; i < btns.length; i++) (function (b) {
+      var act = b.dataset ? (b.dataset.act || "") : "";
+      if (!act) return;
+      if (b.classList && (b.classList.contains("pin") || b.classList.contains("qf-btn"))) return;
+      if (loadHiddenMenus().indexOf(act) >= 0) return;
+      var ex = b.querySelector ? b.querySelector(".macts") : null;
+      if (ex) { syncMacts(ex, act); return; }   // 已装饰过：只同步状态（收藏星标实时反映）
+      var prot = HM_PROTECT.indexOf(act) >= 0;
+      var wrap = document.createElement("span");
+      wrap.className = "macts";
+      var fav = document.createElement("span");
+      var on = isFavAct(act);
+      fav.className = "mact" + (on ? " on" : "");
+      fav.setAttribute("role", "button");
+      fav.setAttribute("title", on ? "移出快捷常用" : "加入快捷常用");
+      fav.textContent = on ? "\u2605" : "\u2606";
+      var hid = document.createElement("span");
+      hid.className = "mact hide" + (prot ? " disabled" : "");
+      hid.setAttribute("role", "button");
+      hid.setAttribute("title", prot ? "该菜单是恢复入口，不允许隐藏" : "隐藏此菜单");
+      hid.textContent = "\uD83D\uDEAB";
+      function stopProp(e) { if (e && e.stopPropagation) e.stopPropagation(); }
+      function onClick(e) { if (e && e.stopPropagation) e.stopPropagation(); if (e && e.preventDefault) e.preventDefault(); }
+      fav.addEventListener("click", function (e) { onClick(e); confirmFavMenu(act, b); });
+      fav.addEventListener("touchend", stopProp);
+      hid.addEventListener("click", function (e) { onClick(e); confirmHideMenu(act, b); });
+      hid.addEventListener("touchend", stopProp);
+      wrap.appendChild(fav); wrap.appendChild(hid);
+      b.appendChild(wrap);
+    })(btns[i]);
+    ensureMenuActToggle(root);
+  }
+  // 抽屉头部 ⚙ 开关：一键收起/显示这些按钮
+  function ensureMenuActToggle(root) {
+    try {
+      var head = root.querySelector ? root.querySelector(".head") : null;
+      if (!head) return;
+      var t = document.getElementById("mactToggle");
+      if (!t) {
+        t = document.createElement("span");
+        t.id = "mactToggle";
+        t.className = "macttg";
+        t.setAttribute("title", "显示/隐藏 菜单上的收藏与隐藏按钮");
+        t.addEventListener("click", function (e) {
+          if (e && e.stopPropagation) e.stopPropagation();
+          var on = !mactsEnabled();
+          setMactsEnabled(on);
+          clearMenuActs(root);
+          if (on) decorateMenuButtons();
+          else if (typeof toast === "function") toast("已收起菜单上的收藏/隐藏按钮（长按菜单项仍可操作）");
+        });
+        if (head.firstChild) head.insertBefore(t, head.firstChild); else head.appendChild(t);
+      }
+      t.textContent = mactsEnabled() ? "\u2699\uFE0F" : "\u2699";
+    } catch (e) {}
+  }
+  // 二次确认：收藏 / 移出快捷常用
+  function confirmFavMenu(act, b) {
+    var title = (typeof btnMenuTitle === "function" ? btnMenuTitle(b) : "") || act;
+    var on = isFavAct(act);
+    openModal(on ? "确认移出快捷常用？" : "确认加入快捷常用？",
+      '<div class="hint">' + (on ? '将把「<b>' + esc(title) + '</b>」从「快捷常用」中移出。' : '将把「<b>' + esc(title) + '</b>」加入「快捷常用」，显示在查询 / 筛选下方。') + '原菜单位置的功能<b>仍然保留</b>。</div>',
+      '<button class="btn ghost" id="cfCancel">取消</button><button class="btn primary" id="cfOk">' + (on ? "确认移出" : "确认收藏") + '</button>');
+    var c = el("cfCancel"); if (c) c.onclick = closeModal;
+    var o = el("cfOk");
+    if (o) o.onclick = function () { closeModal(); try { toggleQuickFav(act); } catch (e) { toast("操作失败：" + (e && e.message ? e.message : e)); } };
+  }
+  // 二次确认：隐藏菜单
+  function confirmHideMenu(act, b) {
+    var title = (typeof btnMenuTitle === "function" ? btnMenuTitle(b) : "") || act;
+    if (HM_PROTECT.indexOf(act) >= 0) { toast("该菜单是恢复入口，不允许隐藏"); return; }
+    openModal("确认隐藏此菜单？",
+      '<div class="hint">即将隐藏「<b>' + esc(title) + '</b>」。<br/>隐藏<b>不会删除</b>任何功能，可随时在「设置 → 恢复隐藏子菜单 / 隐藏子菜单列表」中恢复显示。</div>',
+      '<button class="btn ghost" id="cfCancel">取消</button><button class="btn primary" id="cfOk">确认隐藏</button>');
+    var c = el("cfCancel"); if (c) c.onclick = closeModal;
+    var o = el("cfOk");
+    if (o) o.onclick = function () { closeModal(); try { hideMenuAct(act); } catch (e) { toast("操作失败：" + (e && e.message ? e.message : e)); } };
+  }
+  // ---------- /v2.4.9 子菜单「隐藏 / 收藏」按钮 ----------
   function applyHiddenMenus() {
     const hm = loadHiddenMenus();
     const root = (document.getElementById && document.getElementById("drawer")) || document;
@@ -2797,6 +3034,7 @@ function popupHtml(r) {
       const grp = subs[i].previousElementSibling;
       if (grp && grp.classList && grp.classList.contains("mgroup")) grp.style.display = vis.length ? "" : "none";
     }
+    try { decorateMenuButtons(); } catch (e) {}
   }
   function hideMenuAct(act) {
     if (!act) return;
@@ -2917,6 +3155,7 @@ function popupHtml(r) {
       return `<button class="menu-btn qf-btn" data-act="${act}"><span class="ico">${ico}</span><span>${esc(title)}<span class="sub">快捷常用 · 长按移出</span></span></button>`;
     }).join("");
     box.querySelectorAll(".menu-btn").forEach(bindMenuBtn);
+    try { decorateMenuButtons(); } catch (e) {}
   }
   function openQuickFavSettings() {
     const all = [...document.querySelectorAll(".drawer .menu-btn:not(.qf-btn)")].filter((b) => !QF_EXCLUDE.includes(b.dataset.act));
@@ -3782,7 +4021,7 @@ function popupHtml(r) {
   })();
 
   // ---------- 启动 ----------
-  window.APP = { edit: openEdit, shareBuilding,   /* v2.4.3 修复：气泡「分享」按钮 onclick=\"APP.shareBuilding()\" 长期未导出 → 点击即 script error */ del, openPhoto, viewPhotos: openPhotoCycle, navigate, nearCenter, close: closeModal, back,
+  window.APP = { showAllParams, edit: openEdit, shareBuilding,   /* v2.4.3 修复：气泡「分享」按钮 onclick=\"APP.shareBuilding()\" 长期未导出 → 点击即 script error */ del, openPhoto, viewPhotos: openPhotoCycle, navigate, nearCenter, close: closeModal, back,
     openCheckin, openCheckinList, receivePhoto, receiveSheet, receiveDone, receiveError, receiveCancel, onExportResult };
   // v2.4.3：暴露 ai.js 依赖的全局 helper（三端一致），否则 AI 菜单 openModal is not defined → script error
   window.el = el;
@@ -3811,29 +4050,38 @@ function popupHtml(r) {
     window.__integrity = { missing, ok: !missing.length, ts: Date.now() };
     if (missing.length) console.warn("[integrity] missing:", missing.map((n) => required.find((r) => r[0] === n)[2]).join("\u3001"));
   })();
+  // C1：启动恢复「上次窗口」——必须定义在 IIFE 顶层作用域。
+  // 此前误放在 bindUI() 内部，顶层调用必然 ReferenceError；又被 .catch 吞成 toast，
+  // 导致故障只留一句 toast、初始化收尾中断（2026-09-16 修复）。
+  function restoreLastWindow() {
+    if (lastWindowId) {
+      const f = getFavs().find((x) => x.id === lastWindowId);
+      if (f) { flyToFav(f); return; }
+    }
+    if (lastCenter) map.setView([lastCenter.lat, lastCenter.lng], lastCenter.zoom);
+    else fitToShown();
+  }
   initMap();
   bindUI();
   loadUI();
   load().then(() => {
-    addBasemap();
-    updateLayerBtn();
-    render();
-    initKB();
-    renderCheckinMarkers();
-    if (lastCenter) map.setView([lastCenter.lat, lastCenter.lng], lastCenter.zoom);
-    else fitToShown();
-  }).catch((e) => toast("加载失败：" + e.message));
+    // 各步骤独立容错：任何一步抛错只提示对应步骤，不再中断后续（否则一处异常 = 整屏空白）
+    const steps = [["底图", addBasemap], ["图层按钮", updateLayerBtn], ["渲染", render], ["知识库", initKB], ["打卡足迹", renderCheckinMarkers], ["恢复窗口", restoreLastWindow]];
+    for (const [name, fn] of steps) {
+      try { fn(); } catch (e) { console.error("[init] " + name + " 失败:", e); toast("初始化[" + name + "]失败：" + e.message); }
+    }
+  }).catch((e) => { console.error("[init] load 失败:", e); toast("加载失败：" + e.message); });
   if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
     navigator.serviceWorker.register("sw.js").catch(() => {});
 
-  // ---------- v2.4.3 天地图密钥管理（#9：隐藏当前密钥 + 复制需密码 3305）----------
+  // ---------- v2.4.3 天地图密钥管理（#9：隐藏当前密钥 + 复制需访问密码）----------
   function openTiandituKeySettings() {
     const cur = (() => { try { return JSON.parse(localStorage.getItem("appsettings_key_v1") || "{}"); } catch (e) { return {}; } })();
     const html = `<div class="hint">天地图密钥可能过期。本页可重置浏览器端与服务端 token；保存后<b>立即生效</b>（无需刷新页面）。默认 token 用于开箱即用，重设后写到 localStorage appsettings_key_v1，原 __CONFIG__ 配置不再被读取。</div>
       <div class="field"><label>浏览器端 TIANDITU_TOKEN（前端在线底图加载）</label><input id="tdtClient" class="inp" value="" placeholder="留空则保持当前密钥 · 32位 16 进制字符串"></div>
       <div class="field"><label>服务端 TIANDITU_SERVER_TOKEN（瓦片下载脚本）</label><input id="tdtServer" class="inp" value="" placeholder="留空则保持当前密钥 · 32位 16 进制字符串"></div>
       <div class="field"><label>当前生效的 token（已隐藏，防窃取）</label><input class="inp" readonly value="客户端：••••••••••••••••    服务端：••••••••••••••••"></div>
-      <div class="field"><label>复制当前密钥（需验证访问密码 <b>3305</b>）</label><input id="tdtPwd" type="password" class="inp" placeholder="输入访问密码" autocomplete="off"></div>
+      <div class="field"><label>复制当前密钥（需验证访问密码）</label><input id="tdtPwd" type="password" class="inp" placeholder="输入访问密码" autocomplete="off"></div>
       <div class="hint">密钥不再明文展示；点「复制当前密钥」并在上方输入正确密码后才可复制。恢复默认：点「恢复默认」回到内置 token；点「清空保存」清空 localStorage（恢复用 __CONFIG__ 注入）。</div>`;
     openModal("天地图密钥管理", html, `<button class="btn ghost" id="tdtReset">恢复默认</button><button class="btn ghost" id="tdtClear">清空保存</button><button class="btn ghost" id="tdtCopy">复制当前密钥</button><button class="btn ghost" id="tdtCancel">取消</button><button class="btn primary" id="tdtSave">💾 保存并立即生效</button>`);
     el("tdtCancel").onclick = closeModal;
