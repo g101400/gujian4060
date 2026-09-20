@@ -410,7 +410,7 @@ function back() {
     cvaLayer = L.tileLayer(tk("cva"), baseOpts);
     imgLayer = L.tileLayer(tk("img"), baseOpts);
     ciaLayer = L.tileLayer(tk("cia"), baseOpts);
-    layerGroup = L.featureGroup().addTo(map); // 2026-09-16 修复：L.layerGroup 无 getBounds()，fitToShown 运行时报错；featureGroup 继承 layerGroup 且自带 getBounds（与水利端 2026-08-20 修复对齐）
+    layerGroup = L.layerGroup().addTo(map);
     overlayGroup = L.layerGroup().addTo(map); // 测距 / 周边 等叠加层，render() 不清空
     ckLayer = L.layerGroup().addTo(map); // 打卡足迹叠加层（金色 #e0a93c）
     map.on("popupopen", onPopupOpen);
@@ -2813,6 +2813,15 @@ function popupHtml(r) {
         it.onclick = () => { const i = +it.dataset.i; lastWindowId = favs[i].id; saveUI(); closeModal(); flyToFav(favs[i]); toast("已返回收藏窗口：" + favs[i].name); };
       });
     }
+    // C1：启动恢复「上次窗口」——优先恢复最后一次返回的收藏窗口，否则恢复中心/适配全部
+    function restoreLastWindow() {
+      if (lastWindowId) {
+        const f = getFavs().find((x) => x.id === lastWindowId);
+        if (f) { flyToFav(f); return; }
+      }
+      if (lastCenter) map.setView([lastCenter.lat, lastCenter.lng], lastCenter.zoom);
+      else fitToShown();
+    }
     // 三击地图任意处 → 强制恢复主菜单（测距/选点模式不触发，避免误操）
     let _taps = 0, _tapT = 0;
     $("#map").addEventListener("click", () => {
@@ -4050,27 +4059,17 @@ function popupHtml(r) {
     window.__integrity = { missing, ok: !missing.length, ts: Date.now() };
     if (missing.length) console.warn("[integrity] missing:", missing.map((n) => required.find((r) => r[0] === n)[2]).join("\u3001"));
   })();
-  // C1：启动恢复「上次窗口」——必须定义在 IIFE 顶层作用域。
-  // 此前误放在 bindUI() 内部，顶层调用必然 ReferenceError；又被 .catch 吞成 toast，
-  // 导致故障只留一句 toast、初始化收尾中断（2026-09-16 修复）。
-  function restoreLastWindow() {
-    if (lastWindowId) {
-      const f = getFavs().find((x) => x.id === lastWindowId);
-      if (f) { flyToFav(f); return; }
-    }
-    if (lastCenter) map.setView([lastCenter.lat, lastCenter.lng], lastCenter.zoom);
-    else fitToShown();
-  }
   initMap();
   bindUI();
   loadUI();
   load().then(() => {
-    // 各步骤独立容错：任何一步抛错只提示对应步骤，不再中断后续（否则一处异常 = 整屏空白）
-    const steps = [["底图", addBasemap], ["图层按钮", updateLayerBtn], ["渲染", render], ["知识库", initKB], ["打卡足迹", renderCheckinMarkers], ["恢复窗口", restoreLastWindow]];
-    for (const [name, fn] of steps) {
-      try { fn(); } catch (e) { console.error("[init] " + name + " 失败:", e); toast("初始化[" + name + "]失败：" + e.message); }
-    }
-  }).catch((e) => { console.error("[init] load 失败:", e); toast("加载失败：" + e.message); });
+    addBasemap();
+    updateLayerBtn();
+    render();
+    initKB();
+    renderCheckinMarkers();
+    restoreLastWindow();   // C1：优先恢复上次返回的收藏窗口，否则恢复中心/适配全部
+  }).catch((e) => toast("加载失败：" + e.message));
   if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
     navigator.serviceWorker.register("sw.js").catch(() => {});
 
