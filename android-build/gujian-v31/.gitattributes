@@ -1,0 +1,5 @@
+# 统一行尾为 LF，保证跨平台（Win/UOS/macOS）克隆一致
+* text=auto eol=lf
+
+# 二进制资源（不换行转换）
+*.gz binary

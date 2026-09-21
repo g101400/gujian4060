@@ -1,0 +1,2048 @@
+/* 古建景点打卡 — 离线 WebView 应用逻辑（模仿水利一张图，域改为古建文物） */
+(function () {
+  "use strict";
+  window.onerror = function (msg, src, line, col, err) {
+    var detail = String(msg || "");
+    try {
+      if (err && err.stack) detail += " | " + err.stack;
+      else if (src) detail += " | @" + src + ":" + line + ":" + col;
+    } catch (e2) {}
+    var t = document.getElementById("toast");
+    if (t) { t.textContent = "运行错误：" + detail; t.classList.add("show"); }
+    try { window.__lastError = { msg: msg, src: src, line: line, col: col, stack: err ? err.stack : "" }; } catch (e3) {}
+    return false;
+  };
+  // v1.8.3：ovobj 模块加载自检（ovobj_bridge.js 在 app.js 前引入；若缺失，点「导入 ovobj」会 ReferenceError → Script error）
+  setTimeout(function () {
+    try {
+      if (typeof importOvobj !== "function" && typeof window.importOvobj !== "function") {
+        toast("⚠ ovobj 模块未加载（ovobj_bridge.js 缺失或加载失败），导入奥维坐标功能不可用");
+      }
+    } catch (e) {}
+  }, 1500);
+
+  // v1.8.3：老 WebView 兼容 polyfill（安卓 5.x 系统 WebView / 老 WebKitGTK 缺 Array.prototype.find 等 ES6 API）
+  if (typeof Array.prototype.find !== "function") {
+    Array.prototype.find = function (pred) {
+      for (var i = 0; i < this.length; i++) { if (pred(this[i], i, this)) return this[i]; }
+      return undefined;
+    };
+  }
+  if (typeof Array.prototype.findIndex !== "function") {
+    Array.prototype.findIndex = function (pred) {
+      for (var i = 0; i < this.length; i++) { if (pred(this[i], i, this)) return i; }
+      return -1;
+    };
+  }
+  if (typeof Array.from !== "function") {
+    Array.from = function (arrLike) {
+      var out = [];
+      for (var i = 0; i < arrLike.length; i++) out.push(arrLike[i]);
+      return out;
+    };
+  }
+  if (typeof Object.assign !== "function") {
+    Object.assign = function (t) {
+      for (var i = 1; i < arguments.length; i++) {
+        var s = arguments[i]; if (!s) continue;
+        for (var k in s) { if (Object.prototype.hasOwnProperty.call(s, k)) t[k] = s[k]; }
+      }
+      return t;
+    };
+  }
+  // 天地图浏览器端 token：优先读取 index.html 中的环境配置，便于不同环境替换；缺省则用内置值
+  var TOKEN = (window.TIANDITU_TOKENS && window.TIANDITU_TOKENS.browser) || "61691764ff68bf341c4c9c4770b24b5f";
+  var AUTHOR = "小七";
+  var LS_KEY = "gujian_travel_v1";
+  var APPNAME = "古建景点打卡";
+  var APP_VERSION = "2.3";
+  var APP_BUILD_DATE = "2026-08-28";
+
+  var XFER = loadXfer();
+  function loadXfer() {
+    try { return Object.assign({ source: "local", resume: true, overwriteSame: "ask", baiduToken: "", quarkToken: "" }, JSON.parse(localStorage.getItem("gujian_xfer") || "{}")); }
+    catch (e) { return { source: "local", resume: true, overwriteSame: "ask", baiduToken: "", quarkToken: "" }; }
+  }
+  function saveXfer() { try { localStorage.setItem("gujian_xfer", JSON.stringify(XFER)); } catch (e) {} }
+
+  var HERITAGE = [];
+  var MARKERS = {};
+  var LINES = {};
+  var map, baseVec, baseImg, labelVec, labelImg;
+  var currentBase = "vec";
+  var addMode = false;
+  var pendingAdd = null;
+  var editing = null;
+  var editingCheckin = null;
+  var filters = { provinces: new Set(), cities: new Set(), types: new Set(), text: "", photoStatus: "all" };
+  var listMode = false;
+  var coordPickMode = false;
+
+  /* ---------- 工具 ---------- */
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function toast(msg) {
+    var t = $("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove("show"); }, 1900);
+  }
+  /* 自定义确认对话框（P0：离线 WebView 的 confirm() 静默返回 false，提示不弹、数据静默丢失） */
+  window.ask = function (title, msg, opts, cb) {
+    var box = $("askBox");
+    if (!box) return cb && cb(true);
+    box.querySelector(".ask-title").textContent = title || "提示";
+    box.querySelector(".ask-msg").innerHTML = msg || "";
+    var btns = box.querySelector(".ask-btns");
+    btns.innerHTML = "";
+    (opts || []).forEach(function (o) {
+      var b = document.createElement("button");
+      b.textContent = o.t;
+      b.className = o.cls || "btn-cancel";
+      b.onclick = function () { closeAsk(); if (cb) cb(o.v); };
+      btns.appendChild(b);
+    });
+    box.classList.add("show");
+  };
+  window.closeAsk = function () {
+    var box = $("askBox");
+    if (box) box.classList.remove("show");
+  };
+  /* ============ 等待遮罩（长操作请稍后提示，避免误以为卡死）============ */
+  var BUSY = { n: 0 };
+  function busy(msg) {
+    var el = $("busyOverlay");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "busyOverlay";
+      el.innerHTML =
+        '<div class="busy-box">' +
+        '<div class="busy-spin"></div>' +
+        '<div class="busy-msg" id="busyMsg"></div>' +
+        '<div class="busy-sub" id="busySub">请稍后，勿重复点击或退出本页…</div>' +
+        "</div>";
+      document.body.appendChild(el);
+    }
+    var m = $("busyMsg");
+    if (m) m.textContent = msg || "执行中，请稍后…";
+    el.classList.add("show");
+    BUSY.n++; return el;
+  }
+  function busyDetail(text) {
+    var s = $("busySub");
+    if (s) s.textContent = text || "请稍后，勿重复点击或退出本页…";
+  }
+  function idle() {
+    var el = $("busyOverlay");
+    if (el) el.classList.remove("show");
+    BUSY.n = 0;
+  }
+  function busyRun(msg, fn) {
+    busy(msg);
+    setTimeout(function () {
+      try { fn(); } catch (e) { toast("操作失败：" + (e && e.message ? e.message : e)); }
+      finally { idle(); }
+    }, 30);
+  }
+  function busyIfSlow(msg, ms) {
+    clearTimeout(busyIfSlow._t);
+    busyIfSlow._t = setTimeout(function () { busy(msg); }, ms == null ? 400 : ms);
+  }
+  function busyCancelPending() { clearTimeout(busyIfSlow._t); idle(); }
+  window.busy = busy; window.idle = idle; window.busyDetail = busyDetail;
+  // v3.31.x 作用域桥：ovobj_bridge.js 是独立「全局」<script>，无法访问本 IIFE 内的局部符号。
+  // 统一经 window.__shuili 暴露，否则导出 ovobj/obj 会因 ReferenceError 被 window.onerror 捕获成
+  // "运行错误：script error"，导入时 $ 未定义被 try/catch 吞掉而"无任何提示"。
+  // 注：古建数据数组为 HERITAGE（非 BUILDINGS）；古建无 pickExportScope 对话框，导出退回「全部」。
+  window.__shuili = {
+    getBuildings: function () { return HERITAGE; },
+    APPNAME: APPNAME,
+    getTodayStr: getTodayStr,
+    save: save,
+    render: render,
+    buildLegend: buildLegend,
+    toast: toast,
+    ask: ask,
+    $: $
+  };
+  function photoSrc(p) {
+    if (p.file && window.Android && typeof window.Android.ensureThumb === "function") {
+      try { return window.Android.ensureThumb(p.file, 320); } catch (e) {}
+    }
+    if (p.file) {
+      try { if (window.Android && typeof window.Android.readPhoto === "function") return window.Android.readPhoto(p.file); } catch (e) {}
+      return "";
+    }
+    return p.data || "";
+  }
+  // 网格/列表缩略图：优先原生 thumbPhoto 降采样，避免多张大图塞进 WebView 内存导致 OOM（坑#18 同源修复）
+  function thumbSrc(p) {
+    if (!p) return "";
+    if (p.data) return p.data;
+    if (p.file) {
+      try { if (window.Android && window.Android.ensureThumb) { var e = window.Android.ensureThumb(p.file, 320); if (e) return e; } } catch (e) {}
+      try { if (window.Android && window.Android.thumbPhoto) { var t = window.Android.thumbPhoto(p.file, 512); if (t) return t; } } catch (e) {}
+      try { if (window.Android && typeof window.Android.readPhoto === "function") return window.Android.readPhoto(p.file); } catch (e) {}
+    }
+    return p.data || "";
+  }
+
+  /* ============ 照片压缩（方案2：>1.5M 大图导入时压缩，默认 500KB，只存压缩版）============ */
+  var COMPRESS_THRESHOLD = 1.5 * 1024 * 1024; // 1.5MB
+  var __compressPrefs = null;                 // null=未决定；0=不压缩；>0=目标KB
+  var __compressQueue = [];                   // [{rel, abs, sz}] 待压缩的已落盘大图
+  var __compressRunning = false;
+  // base64 dataURL → 估算字节数
+  function dataUrlSize(dataUrl) {
+    try {
+      var idx = dataUrl.indexOf(",");
+      var b64 = idx >= 0 ? dataUrl.substring(idx + 1) : dataUrl;
+      return Math.floor(b64.length * 3 / 4);
+    } catch (e) { return 0; }
+  }
+  function fmtMB(b) { return (b / 1048576).toFixed(1); }
+  // JS canvas 压缩（base64 场景：单张添加 / 打卡 / 浏览器回退 ovkmz）
+  function canvasCompress(dataUrl, targetKB, cb) {
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var w = img.width, h = img.height, longer = Math.max(w, h);
+        var scale = Math.min(1, 2048 / longer);
+        var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+        var cv = document.createElement("canvas");
+        cv.width = cw; cv.height = ch;
+        cv.getContext("2d").drawImage(img, 0, 0, cw, ch);
+        var q = 0.82, out = null, limit = targetKB * 1024;
+        for (var i = 0; i < 8; i++) {
+          var d = cv.toDataURL("image/jpeg", q);
+          if (dataUrlSize(d) <= limit) { out = d; break; }
+          q -= 0.09;
+        }
+        if (!out) out = cv.toDataURL("image/jpeg", 0.25);
+        cb(out);
+      } catch (e) { cb(dataUrl); }
+    };
+    img.onerror = function () { cb(dataUrl); };
+    img.src = dataUrl;
+  }
+  // 压缩目标选择弹窗（每会话首次遇大图弹一次，之后沿用选择）
+  function askCompressTarget(n, totalMB, estMB, cb) {
+    var opts = [[200, "200KB（最省空间）"], [500, "500KB（推荐）"], [1024, "1MB（更清晰）"], [0, "不压缩"]].map(function (o) {
+      var sel = o[0] === 500 ? " checked" : "";
+      return '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:14px"><input type="radio" name="cTarget" value="' + o[0] + '"' + sel + '> ' + o[1] + "</label>";
+    }).join("");
+    ask("检测到大尺寸照片",
+      "共 <b>" + n + "</b> 张照片超过 1.5MB（合计约 <b>" + totalMB + "</b> MB）。<br>" +
+      "压缩后<b>仅保留压缩版</b>，<b style='color:#c0392b'>原大图将被覆盖删除</b>（原始压缩包请自行备份）。<br><br>" +
+      "请选择压缩目标（系统建议 500KB，压缩后约 <b>" + estMB + "</b> MB）：<br>" + opts,
+      [{ t: "开始压缩", cls: "btn-confirm2", v: 1 }, { t: "不压缩直接导入", cls: "btn-cancel", v: 0 }],
+      function (ok) {
+        if (!ok) { __compressPrefs = 0; cb(0); return; }
+        var rb = document.querySelector('input[name="cTarget"]:checked');
+        __compressPrefs = rb ? parseInt(rb.value, 10) : 500;
+        cb(__compressPrefs);
+      });
+  }
+  // 已落盘照片排队压缩（原生并发 + 进度条）；>1.5M 才入队
+  function queueCompress(rel) {
+    if (!(window.Android && window.Android.photoAbsPath && window.Android.fileSize && window.Android.compressPhoto)) return;
+    try {
+      var abs = window.Android.photoAbsPath(rel);
+      if (!abs) return;
+      var sz = window.Android.fileSize(abs);
+      if (sz <= COMPRESS_THRESHOLD) return;
+      __compressQueue.push({ rel: rel, abs: abs, sz: sz });
+    } catch (e) {}
+  }
+  // 统一压缩触发点：所有照片落盘完成后调用（匹配完成 / 多匹配确认 / ovkmz 导入后）
+  function flushCompress() {
+    if (__compressRunning || !__compressQueue.length) return;
+    if (!(window.Android && window.Android.compressPhoto)) { __compressQueue = []; return; }
+    if (__compressPrefs === null) {
+      var n = __compressQueue.length, totalB = 0;
+      __compressQueue.forEach(function (q) { totalB += q.sz || 0; });
+      askCompressTarget(n, fmtMB(totalB), Math.max(1, Math.round(totalB * 500 / 1048576 / 1024)), function (t) {
+        __compressPrefs = t;
+        if (t > 0) flushCompress(); else __compressQueue = [];
+      });
+      return;
+    }
+    if (__compressPrefs === 0) { __compressQueue = []; return; }
+    __compressRunning = true;
+    var jobs = __compressQueue.slice(); __compressQueue = [];
+    var totalB = 0; jobs.forEach(function (q) { totalB += q.sz || 0; });
+    openXferProgress("compress", "正在压缩 " + jobs.length + " 张大尺寸照片…");
+    setXferTitle("正在压缩 " + jobs.length + " 张大尺寸照片（原图 " + fmtMB(totalB) + " MB → 目标 ≤" + __compressPrefs + "KB），仅保留压缩版…");
+    window.__compressJobs = {};
+    jobs.forEach(function (q) {
+      window.__compressJobs[q.abs] = null;
+      try { window.Android.compressPhoto(q.abs, __compressPrefs); }
+      catch (e) { window.__compressJobs[q.abs] = { ok: false }; }
+    });
+    window.__compressDone = function (failedN) {
+      __compressRunning = false;
+      closeXferProgress();
+      if (failedN > 0) toast(failedN + " 张照片压缩失败，已保留原图");
+      if (__compressQueue.length && __compressPrefs > 0) flushCompress();
+    };
+  }
+  // 原生压缩逐张回调（并发累积 + 进度）
+  window.onCompressPhoto = function (absPath, json) {
+    var o = null; try { o = JSON.parse(json); } catch (e) {}
+    if (!window.__compressJobs || !(absPath in window.__compressJobs)) return;
+    window.__compressJobs[absPath] = o || { ok: false };
+    var doneN = 0, total = 0, failed = 0;
+    Object.keys(window.__compressJobs).forEach(function (k) {
+      total++;
+      if (window.__compressJobs[k] !== null) { doneN++; if (!window.__compressJobs[k].ok) failed++; }
+    });
+    updateXferProgress("compress", doneN, total);
+    if (window.__compressDone && doneN >= total) window.__compressDone(failed);
+  };
+  // base64 场景压缩（单张添加 / 打卡 / 浏览器回退 ovkmz）：>1.5M 走 canvas 压缩
+  function compressDataUrlIfBig(data, done) {
+    var sz = dataUrlSize(data);
+    if (sz <= COMPRESS_THRESHOLD || __compressPrefs === 0) { done(data); return; }
+    var cb = function (t) {
+      if (t > 0) { busy("正在压缩大尺寸照片…"); canvasCompress(data, t, function (d) { idle(); done(d); }); }
+      else done(data);
+    };
+    if (__compressPrefs !== null) cb(__compressPrefs);
+    else askCompressTarget(1, fmtMB(sz), Math.max(1, Math.round(sz * 500 / 1048576 / 1024)), cb);
+  }
+  function ensureWifi(action, cb) {
+    var net = (window.Android && typeof window.Android.netType === "function") ? window.Android.netType() : "wifi";
+    if (net !== "wifi") {
+      ask("流量提醒", "当前不是 WiFi（" + (net === "cellular" ? "移动网络" : "无网络") + "），" + action + "可能消耗流量，是否继续？",
+        [{ t: "取消", cls: "btn-cancel", v: 0 }, { t: "继续", cls: "btn-confirm2", v: 1 }], function (v) { if (v) cb(); });
+      return;
+    }
+    cb();
+  }
+  /* ============ 传输进度浮层 ============ */
+  function openXferProgress(kind, title) {
+    closeXferProgress(true);
+    var el = document.createElement("div"); el.id = "xferOverlay";
+    el.style.cssText = "position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:3px solid var(--primary);padding:14px 16px;z-index:2000;box-shadow:0 -2px 10px rgba(0,0,0,.25);font-size:14px;max-height:46vh;overflow:auto";
+    el.innerHTML = '<div id="xferTitle" style="font-weight:600;margin-bottom:8px">' + esc(title) + '</div>' +
+      '<div style="height:8px;background:#eee;border-radius:4px;overflow:hidden"><div id="xferBar" style="height:100%;width:0;background:var(--accent);transition:width .2s"></div></div>' +
+      '<div id="xferPct" style="margin-top:6px;color:#555;font-size:12px">准备中…</div>' +
+      '<button onclick="closeXferProgress()" style="margin-top:10px;width:100%;padding:8px;background:#eee;border:none;border-radius:8px">关闭（传输在后台继续）</button>';
+    document.body.appendChild(el);
+  }
+  function closeXferProgress(silent) { var el = $("xferOverlay"); if (el) el.remove(); }
+  function updateXferProgress(phase, done, total) {
+    var bar = $("xferBar"), pct = $("xferPct"); if (!bar) return;
+    var p = total > 0 ? Math.min(100, Math.round(done * 100 / total)) : 0; bar.style.width = p + "%";
+    var label = { copy: "复制照片", zip: "打包", download: "下载", netdisk: "上传网盘", compress: "压缩照片" }[phase] || phase;
+    if (pct) pct.textContent = label + "：" + p + "% （" + done + "/" + (total || 0) + "）";
+  }
+  function setXferTitle(msg) { var t = $("xferTitle"); if (t) t.textContent = msg; }
+  window.onXferProgress = function (phase, done, total) { updateXferProgress(phase, done, total); };
+  window.onXferError = function (kind, msg) { closeXferProgress(); if (window.idle) window.idle(); toast("传输失败(" + kind + ")：" + msg); };
+  window.onXferDone = function (kind, path) {
+    var name = (path || "").split("/").pop();
+    if (kind === "export") {
+      if (XFER.source === "baidu" || XFER.source === "quark") {
+        var token = XFER.source === "baidu" ? XFER.baiduToken : XFER.quarkToken;
+        setXferTitle("正在上传到" + (XFER.source === "baidu" ? "百度网盘" : "夸克网盘") + "…");
+        window.Android.netdiskUpload(XFER.source, token, path, name, XFER.resume); return;
+      }
+      closeXferProgress(); toast("已导出：" + name);
+    } else if (kind === "download") { closeXferProgress(); toast("下载完成：" + name); }
+    else if (kind === "netdisk") { closeXferProgress(); toast("已上传到" + (XFER.source === "baidu" ? "百度" : "夸克") + "网盘：" + name); }
+  };
+
+  function openXferSettings() {
+    var src = XFER.source, resume = XFER.resume ? "checked" : "", ov = XFER.overwriteSame;
+    var html =
+      '<p style="font-size:13px;color:#555;margin-bottom:8px">导出目标与传输设置。</p>' +
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px">' +
+      '<div style="font-weight:600;margin-bottom:6px">导出目标</div>' +
+      '<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:14px"><input type="radio" name="xfSrc" value="local" ' + (src === "local" ? "checked" : "") + '> 本机（Download/古建景点打卡）</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:14px"><input type="radio" name="xfSrc" value="baidu" ' + (src === "baidu" ? "checked" : "") + '> 百度网盘</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:14px"><input type="radio" name="xfSrc" value="quark" ' + (src === "quark" ? "checked" : "") + '> 夸克网盘</label>' +
+      '</div>' +
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px">' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:14px"><input type="checkbox" id="xfResume" ' + resume + '> 启用断点续传</label>' +
+      '<div style="margin-top:8px;font-size:13px;color:#555">内容相同（按 SHA-256）时：</div>' +
+      '<select id="xfOver" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:1px solid var(--border)">' +
+      '<option value="ask" ' + (ov === "ask" ? "selected" : "") + '>询问是否覆盖</option>' +
+      '<option value="always" ' + (ov === "always" ? "selected" : "") + '>总是覆盖</option>' +
+      '<option value="skip" ' + (ov === "skip" ? "selected" : "") + '>跳过</option></select>' +
+      '</div>' +
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px">' +
+      '<div style="font-size:13px;color:#555;margin-bottom:4px">百度网盘 Token</div>' +
+      '<input id="xfBaidu" value="' + esc(XFER.baiduToken) + '" placeholder="粘贴 Baidu token" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border)">' +
+      '<div style="font-size:13px;color:#555;margin:8px 0 4px">夸克网盘 Token</div>' +
+      '<input id="xfQuark" value="' + esc(XFER.quarkToken) + '" placeholder="粘贴 Quark token" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border)">' +
+      '</div>' +
+      '<div class="form-actions"><button class="btn-save" onclick="saveXferSettings()">保存设置</button></div>' +
+      '<div id="xfMsg" style="margin-top:8px;font-size:12px;color:#b8862f"></div>';
+    $("genTitle").textContent = "传输设置"; $("genBody").innerHTML = html;
+    openSheet("sheetGen");
+  }
+  window.saveXferSettings = function () {
+    var src = document.querySelector('input[name="xfSrc"]:checked');
+    XFER.source = src ? src.value : "local";
+    XFER.resume = $("xfResume") ? $("xfResume").checked : true;
+    XFER.overwriteSame = $("xfOver") ? $("xfOver").value : "ask";
+    XFER.baiduToken = $("xfBaidu") ? $("xfBaidu").value.trim() : "";
+    XFER.quarkToken = $("xfQuark") ? $("xfQuark").value.trim() : "";
+    saveXfer();
+    $("xfMsg").textContent = "已保存。当前导出目标：" + (XFER.source === "local" ? "本机" : (XFER.source === "baidu" ? "百度网盘" : "夸克网盘"));
+    toast("传输设置已保存");
+  };
+
+  function openPeer() {
+    var html =
+      '<p style="font-size:13px;color:#555;margin-bottom:8px">两台安装本 APP 的手机接入同一 WiFi，一台开服务端、一台开客户端，可互传数据文件（支持断点续传）。</p>' +
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">' +
+      '<div style="font-weight:600;margin-bottom:6px">服务端</div>' +
+      '<div id="peerSrvState" style="font-size:12px;color:#888;margin-bottom:6px">未启动</div>' +
+      '<button class="tbtn" style="width:100%" onclick="peerStartServer()">▶ 启动服务端</button>' +
+      '<button class="tbtn" style="width:100%;margin-top:6px" onclick="peerStopServer()">■ 停止服务端</button>' +
+      '</div>' +
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px">' +
+      '<div style="font-weight:600;margin-bottom:6px">客户端</div>' +
+      '<input id="peerUrl" placeholder="服务端地址，如 http://192.168.1.20:8765" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border)">' +
+      '<button class="tbtn" style="width:100%;margin-top:6px" onclick="peerList()">📂 列出服务端文件</button>' +
+      '<button class="tbtn" style="width:100%;margin-top:6px" onclick="peerDownload()">⬇ 下载</button>' +
+      '<div id="peerList" style="margin-top:8px;font-size:12px;color:#555"></div>' +
+      '</div>';
+    $("genTitle").textContent = "手机互传"; $("genBody").innerHTML = html; openSheet("sheetGen");
+  }
+  window.peerStartServer = function () {
+    var url = ""; try { url = window.Android.peerStart(8765); } catch (e) {}
+    if (!url || url.indexOf("error") === 0) { $("peerSrvState").textContent = "启动失败：" + (url || ""); return; }
+    $("peerSrvState").innerHTML = '服务端已启动，地址：<b style="word-break:break-all">' + esc(url) + '</b><br>把该地址填到客户端。';
+    toast("服务端已启动");
+  };
+  window.peerStopServer = function () { try { window.Android.peerStop(); } catch (e) {} $("peerSrvState").textContent = "已停止"; toast("服务端已停止"); };
+  window.peerList = function () {
+    var base = $("peerUrl").value.trim().replace(/\/$/, "");
+    if (!base) { toast("请先填写服务端地址"); return; }
+    fetch(base + "/list").then(function (r) { return r.json(); }).then(function (arr) {
+      if (!arr.length) { $("peerList").textContent = "服务端没有可下载文件"; return; }
+      $("peerList").innerHTML = arr.map(function (f) {
+        return '<div style="padding:3px 0;border-bottom:1px solid #eee"><a style="color:#6b2e2e" onclick="document.getElementById(\'peerUrl\').value=\'' + esc(base) + '/' + esc(f.name) + '\'">' + esc(f.name) + '</a> <span style="color:#999">(' + (f.size / 1048576).toFixed(1) + ' MB)</span></div>';
+      }).join("");
+    }).catch(function () { $("peerList").textContent = "获取列表失败（请确认服务端已启动且同一 WiFi）"; });
+  };
+  window.peerDownload = function () {
+    var url = $("peerUrl").value.trim();
+    if (!url) { toast("请填写要下载的文件地址"); return; }
+    var name = url.split("/").pop();
+    var outPath = window.Android.exportPath(name);
+    ensureWifi("从服务端下载", function () {
+      openXferProgress("download", "正在从服务端下载 " + name + " …");
+      window.Android.download(url, outPath, XFER.resume);
+    });
+  };
+
+  function colorForType(t) {
+    var h = 0; for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 360;
+    return "hsl(" + h + ",55%,48%)";
+  }
+  function uniq(arr) { return Array.from(new Set(arr)).filter(Boolean); }
+  function getTodayStr() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function nowLocalDateTime() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") +
+      "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function normalizePhotoName(s) {
+    s = String(s == null ? "" : s).replace(/\.[^.]+$/, "").trim();
+    s = s.replace(/[\s_]*[（(]?\d+[)）]?$/, "");
+    return s.trim();
+  }
+  function addPhotoToItem(b, data, caption) {
+    b.photos = b.photos || []; b.photos.push({ data: data, caption: caption || "" });
+  }
+
+  /* ---------- 存储 ---------- */
+  function load() {
+    var embedded = window.GUJIAN_DATA || [];
+    try { var s = localStorage.getItem(LS_KEY); if (s) { HERITAGE = JSON.parse(s); return; } } catch (e) {}
+    HERITAGE = JSON.parse(JSON.stringify(embedded));
+  }
+  function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(HERITAGE)); } catch (e) { toast("本地存储失败（可能已满）"); } }
+  function resetData() {
+    ask("恢复初始数据", "确定恢复为初始数据？所有新增/修改/删除与打卡记录将被清空。",
+      [{ t: "取消", cls: "btn-cancel", v: 0 }, { t: "确定恢复", cls: "btn-confirm2", v: 1 }], function (v) {
+        if (!v) return;
+        HERITAGE = JSON.parse(JSON.stringify(window.GUJIAN_DATA || []));
+        save(); render(); toast("已恢复初始数据");
+      });
+  }
+
+  /* ---------- 地图 ---------- */
+  function initMap() {
+    map = L.map("map", { zoomControl: true, attributionControl: true }).setView([35.5, 105], 4);
+    map.zoomControl.setPosition("bottomright");
+    map.attributionControl.setPosition("bottomleft");
+    var sub = "01234567";
+    baseVec = L.tileLayer("https://t{s}.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=" + TOKEN, { subdomains: sub, maxZoom: 18, attribution: "天地图" });
+    labelVec = L.tileLayer("https://t{s}.tianditu.gov.cn/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=" + TOKEN, { subdomains: sub, maxZoom: 18, pane: "shadowPane" });
+    baseImg = L.tileLayer("https://t{s}.tianditu.gov.cn/DataServer?T=img_w&x={x}&y={y}&l={z}&tk=" + TOKEN, { subdomains: sub, maxZoom: 18, attribution: "天地图影像" });
+    labelImg = L.tileLayer("https://t{s}.tianditu.gov.cn/DataServer?T=cia_w&x={x}&y={y}&l={z}&tk=" + TOKEN, { subdomains: sub, maxZoom: 18, pane: "shadowPane" });
+    baseVec.addTo(map); labelVec.addTo(map);
+    // v3.28 视窗裁剪：平移/缩放后防抖增量重渲染（只对视窗内古建建 marker）
+    map.on("moveend", scheduleRender);
+    map.on("zoomend", scheduleRender);
+    map.on("click", function (e) {
+      if (coordPickMode) {
+        var lat = e.latlng.lat, lon = e.latlng.lng;
+        L.popup({ closeButton: true }).setLatLng(e.latlng)
+          .setContent('<div style="font-size:14px"><b>坐标信息</b><br>纬度：' + lat.toFixed(6) + '<br>经度：' + lon.toFixed(6) + '<br><button class="tbtn" style="margin-top:6px" onclick="copyCoord(' + lat + ',' + lon + ')">复制坐标</button></div>')
+          .addTo(map);
+        coordPickMode = false; map._container.style.cursor = ""; $("btnMenu").textContent = "☰ 菜单"; toast("坐标已获取"); return;
+      }
+      if (measureMode) { onMeasureClick(e); return; }
+      if (!addMode) return;
+      openEdit({ id: "h" + Date.now(), name: "新古建", province: "", city: "", type: "", dynasty: "", level: "", intro: "", features: "", path: "", photos: [], checkins: [], geom: "Point", lon: e.latlng.lng, lat: e.latlng.lat, _new: true });
+    });
+    map.on("dblclick", function () { if (measureMode) toggleMeasure(); });
+    buildLegend(); buildBaseSwitcher();
+  }
+
+  function buildBaseSwitcher() {
+    var el = document.getElementById("baseSwitcher");
+    if (!el) { el = document.createElement("div"); el.id = "baseSwitcher"; el.className = "base-switcher"; $("app").appendChild(el); }
+    el.innerHTML =
+      '<div class="bs-title">底图</div>' +
+      '<label class="bs-opt"><input type="radio" name="baseOpt" value="vec" checked><span>矢量地图</span></label>' +
+      '<label class="bs-opt"><input type="radio" name="baseOpt" value="img"><span>影像地图</span></label>';
+    el.querySelectorAll('input[name="baseOpt"]').forEach(function (radio) { radio.onchange = function () { setBase(this.value); }; });
+  }
+  function setBase(mode) {
+    currentBase = mode;
+    if (mode === "vec") { map.removeLayer(baseImg); map.removeLayer(labelImg); map.addLayer(baseVec); map.addLayer(labelVec); }
+    else { map.removeLayer(baseVec); map.removeLayer(labelVec); map.addLayer(baseImg); map.addLayer(labelImg); }
+    var r = document.querySelector('#baseSwitcher input[value="' + mode + '"]'); if (r) r.checked = true;
+  }
+  function switchBaseMap() { setBase(currentBase === "vec" ? "img" : "vec"); toast("底图已切换为：" + (currentBase === "vec" ? "矢量地图" : "影像地图")); }
+
+  var _iconCache = {};
+  function makeIcon(color) {
+    if (_iconCache[color]) return _iconCache[color];
+    var svg = '<svg width="32" height="44" viewBox="0 0 32 44">' +
+      '<path d="M16 2 C8 2 2 8 2 16 C2 26 16 42 16 42 C16 42 30 26 30 16 C30 8 24 2 16 2 Z" fill="' + color + '" stroke="#fff" stroke-width="2.5"/>' +
+      '<circle cx="16" cy="16" r="6" fill="#fff"/></svg>';
+    var ic = L.divIcon({ className: "drop-pin", html: svg, iconSize: [32, 44], iconAnchor: [16, 42], popupAnchor: [0, -38] });
+    _iconCache[color] = ic;
+    return ic;
+  }
+
+  function passFilter(b) {
+    if (filters.provinces.size && !filters.provinces.has(b.province || "")) return false;
+    if (filters.cities.size && !filters.cities.has(b.city || "")) return false;
+    if (filters.types.size && !filters.types.has(b.type || "")) return false;
+    var np = (b.photos || []).length;
+    if (filters.photoStatus === "has" && np <= 0) return false;
+    if (filters.photoStatus === "many" && np < 3) return false;
+    if (filters.photoStatus === "none" && np > 0) return false;
+    if (filters.text) {
+      var t = filters.text.toLowerCase();
+      var hay = (b.name + " " + (b.type || "") + " " + (b.province || "") + " " + (b.city || "") + " " +
+        (b.dynasty || "") + " " + (b.level || "") + " " + (b.intro || "") + " " + (b.features || "")).toLowerCase();
+      if (hay.indexOf(t) < 0) return false;
+    }
+    return true;
+  }
+
+  function popupHtml(b) {
+    var html = '<div class="popup-title">' + esc(b.name) + "</div>";
+    if (b.province) html += '<span class="badge">' + esc(b.province) + "</span>";
+    if (b.city) html += '<span class="badge b2">' + esc(b.city) + "</span>";
+    if (b.type) html += '<span class="badge b3">' + esc(b.type) + "</span>";
+    if (b.dynasty) html += '<div style="font-size:13px;margin-top:4px"><b>年代：</b>' + esc(b.dynasty) + (b.level ? '　<b>级别：</b>' + esc(b.level) : "") + "</div>";
+    if (b.intro) html += '<div style="font-size:13px;margin-top:4px;line-height:1.5">' + esc(b.intro) + "</div>";
+    if (b.features) html += '<div style="font-size:13px;margin-top:4px;color:#9c4a3c"><b>文物特点：</b>' + esc(b.features) + "</div>";
+    if ((b.checkins || []).length) html += '<div style="font-size:12px;margin-top:4px;color:#b8862f">已打卡 ' + b.checkins.length + " 次</div>";
+    if (b.photos && b.photos.length) {
+      html += '<div class="photos">';
+      b.photos.forEach(function (p, i) {
+        var src = thumbSrc(p); var full = photoSrc(p);
+        html += '<img src="' + esc(src) + '" onclick="appLightbox(\'' + esc(b.id) + "'," + i + ')" oncontextmenu="appPhotoAct(\'' + esc(b.id) + "'," + i + ');return false;">';
+      });
+      html += "</div>";
+    }
+    html += '<div class="pop-actions"><button class="pop-edit" onclick="appEdit(\'' + esc(b.id) + '\')">修改</button>' +
+      '<button class="pop-nav" onclick="appNav(\'' + esc(b.id) + '\')">导航</button>' +
+      '<button class="pop-del" onclick="appCheckin(\'' + esc(b.id) + '\')">打卡</button>' +
+      '<button class="pop-del" onclick="appDel(\'' + esc(b.id) + '\')">删除</button></div>' +
+      '<div style="text-align:center;margin-top:6px"><button class="pop-close" onclick="appClosePopup()">✕ 关闭</button></div>';
+    return html;
+  }
+
+  function render() {
+    Object.keys(MARKERS).forEach(function (k) { map.removeLayer(MARKERS[k]); delete MARKERS[k]; });
+    Object.keys(LINES).forEach(function (k) { map.removeLayer(LINES[k]); delete LINES[k]; });
+    // v3.28 性能：只对落在当前视窗（含 15% 缓冲）内的古建建 marker，避免 1032 个点一次性全建导致卡顿
+    var shown = 0, total = 0;
+    var bnds = map.getBounds().pad(0.15);
+    HERITAGE.forEach(function (b) {
+      if (!passFilter(b)) return;
+      total++;
+      if (b.lat != null) {
+        if (!bnds.contains([b.lat, b.lon])) return;
+        var m = L.marker([b.lat, b.lon], { icon: makeIcon(colorForType(b.type || "其他")) }).bindPopup(function () { return popupHtml(b); });
+        m.addTo(map); MARKERS[b.id] = m; shown++;
+      }
+    });
+    $("count").textContent = "显示 " + shown + " / " + total + "（筛选）共 " + HERITAGE.length;
+    if (listMode) renderList();
+  }
+  // 视窗裁剪：平移/缩放后防抖增量重渲染
+  var _renderTimer = null;
+  function scheduleRender() {
+    clearTimeout(_renderTimer);
+    _renderTimer = setTimeout(function () { _renderTimer = null; render(); }, 200);
+  }
+
+  /* ---------- 收藏窗口（记录当前地图视窗四角，可收藏多个；放回收藏窗口跳回视窗）---------- */
+  var BM_KEY = "gujian_bookmarks";
+  function getBookmarks() {
+    try { var a = JSON.parse(localStorage.getItem(BM_KEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+  }
+  function saveBookmarks(a) { try { localStorage.setItem(BM_KEY, JSON.stringify(a)); } catch (e) {} }
+  window.appBookmark = function () {
+    if (!map) return;
+    var b = map.getBounds(), sw = b.getSouthWest(), ne = b.getNorthEast();
+    var list = getBookmarks();
+    list.push({ sw: [sw.lat, sw.lng], ne: [ne.lat, ne.lng], t: Date.now() });
+    saveBookmarks(list);
+    toast("已收藏窗口（共 " + list.length + " 个）");
+  };
+  window.appGotoBookmark = function () {
+    if (!map) return;
+    var list = getBookmarks();
+    if (!list.length) { toast("尚未收藏窗口，请先点 ☆ 收藏窗口"); return; }
+    if (list.length === 1) { gotoBookmark(list[0]); return; }
+    openBookmarkChooser(list);
+  };
+  function gotoBookmark(bm) {
+    try {
+      map.fitBounds([[bm.sw[0], bm.sw[1]], [bm.ne[0], bm.ne[1]]], { animate: true, padding: [40, 40] });
+      toast("已放回收藏窗口");
+    } catch (e) { toast("收藏窗口数据无效"); }
+  }
+  function openBookmarkChooser(list) {
+    var rows = list.map(function (bm, i) {
+      var d = new Date(bm.t);
+      var ts = (d.getMonth() + 1) + "-" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      return '<div class="bm-row"><span style="flex:1;font-size:13px">窗口 ' + (i + 1) + ' <span style="color:#888">（' + ts + '）</span></span>' +
+        '<button class="btn-save" style="padding:4px 10px;font-size:12px" onclick="gotoBookmarkByIndex(' + i + ')">放回</button>' +
+        '<button class="btn-cancel2" style="padding:4px 10px;font-size:12px" onclick="delBookmarkByIndex(' + i + ')">删除</button></div>';
+    }).join("");
+    $("genTitle").textContent = "选择收藏窗口（共 " + list.length + " 个）";
+    $("genBody").innerHTML = rows + '<div class="form-actions"><button class="btn-cancel" onclick="closeSheet(\'sheetGen\')">关闭</button></div>';
+    openSheet("sheetGen");
+  }
+  window.gotoBookmarkByIndex = function (i) { closeSheet("sheetGen"); var l = getBookmarks(); if (l[i]) gotoBookmark(l[i]); };
+  window.delBookmarkByIndex = function (i) {
+    var l = getBookmarks(); if (!l[i]) return;
+    l.splice(i, 1); saveBookmarks(l);
+    if (!l.length) { closeSheet("sheetGen"); toast("已清空收藏窗口"); return; }
+    openBookmarkChooser(l); toast("已删除该窗口");
+  };
+  var btnBk = $("btnBookmark"), btnGb = $("btnGotoBookmark");
+  if (btnBk) btnBk.onclick = function () { window.appBookmark(); };
+  if (btnGb) btnGb.onclick = function () { window.appGotoBookmark(); };
+
+  function buildLegend() {
+    var types = uniq(HERITAGE.map(function (b) { return b.type || "其他"; })).slice(0, 8);
+    var html = "<b>文物类别</b>";
+    types.forEach(function (t) { html += '<div class="lg"><span class="dot" style="background:' + colorForType(t) + '"></span>' + esc(t) + "</div>"; });
+    var el = $("legend"); if (!el) { el = document.createElement("div"); el.id = "legend"; $("app").appendChild(el); }
+    el.innerHTML = html;
+  }
+
+  /* ---------- 弹层 ---------- */
+  function openSheet(id) {
+    $(id).classList.add("show");
+    $(id === "sheetMenu" ? "ovMenu" : (id === "sheetCheckin" ? "ovCheckin" : "ovGen")).classList.add("show");
+    ensureSheetFoot(id);
+  }
+  function ensureSheetFoot(id) {
+    var sheet = $(id); if (!sheet) return;
+    if (sheet.querySelector(".sheet-foot")) return;
+    var foot = document.createElement("div"); foot.className = "sheet-foot";
+    foot.innerHTML = '<button onclick="closeSheet(\'' + id + '\')">✕ 退出本页</button>';
+    sheet.appendChild(foot);
+  }
+  function closeSheet(id) {
+    $(id).classList.remove("show");
+    if (id === "sheetMenu") $("ovMenu").classList.remove("show");
+    else if (id === "sheetCheckin") $("ovCheckin").classList.remove("show");
+    else $("ovGen").classList.remove("show");
+  }
+  window.openSheet = openSheet; window.closeSheet = closeSheet;
+
+  /* ---------- 菜单 ---------- */
+  function buildMenu() {
+    var topItems = [
+      { ico: "🔍", t: "查询（名称 / 城市 / 类型）", f: function () { closeSheet("sheetMenu"); setTimeout(function () { var s = $("search"); if (s) { s.focus(); s.select(); } }, 200); } },
+      { ico: "🔎", t: "筛选（省 / 市 / 文物类别）", f: openFilter }
+    ];
+    var groups = [
+      { g: "拍照打卡", ico: "📸", items: [
+        { ico: "📷", t: "打卡（添加照片/到达时间/体验）", f: function () { closeSheet("sheetMenu"); openCheckin(null); } },
+        { ico: "🛤️", t: "我的打卡路线", f: function () { closeSheet("sheetMenu"); openRoutes(); } }
+      ]},
+      { g: "数据管理", ico: "🗂️", items: [
+        { ico: "🖼️", t: "批量导入照片", f: batchImportPhotos },
+        { ico: "📑", t: "导出古建表格", f: exportTable },
+        { ico: "🗑️", t: "删除添加的照片", f: deleteImportedPhotos },
+        { ico: "🚫", t: "删除古建", f: deleteHeritage },
+        { ico: "♻️", t: "恢复初始数据", f: resetData }
+      ]},
+      { g: "地图和位置", ico: "🗺️", items: [
+        { ico: "📍", t: "定位我的位置", f: locateMe },
+        { ico: "🎯", t: "获取坐标", f: getCoordinates },
+        { ico: "🗺️", t: "底图切换（矢量/影像）", f: switchBaseMap },
+        { ico: "📏", t: "测距", f: toggleMeasure },
+        { ico: "🔎", t: "周边搜索", f: nearbySearch },
+        { ico: "📋", t: "列表视图", f: toggleList },
+        { ico: "➕", t: "添加古建（点地图定位）", f: toggleAdd },
+        { ico: "☆", t: "收藏窗口", f: function () { closeSheet("sheetMenu"); window.appBookmark(); } },
+        { ico: "⌂", t: "放回收藏窗口", f: function () { closeSheet("sheetMenu"); window.appGotoBookmark(); } }
+      ]},
+      { g: "传输与共享", ico: "🔗", items: [
+        { ico: "📦", t: "导出数据(ovkmz/KML)", f: exportOvkmz },
+        { ico: "📥", t: "导入数据(ovkmz/KML)", f: importOvkmz },
+        { ico: "📍", t: "导入 ovobj（奥维坐标）", f: importOvobj },
+        { ico: "📤", t: "导出 ovobj（奥维坐标·实验）", f: exportOvobj },
+        { ico: "📍", t: "导入 obj 坐标（文本）", f: importObj },
+        { ico: "📤", t: "导出 obj 坐标（文本）", f: exportObj },
+        { ico: "📤", t: "导出数据(JSON)", f: exportJson },
+        { ico: "⚙️", t: "传输设置（WiFi/网盘/续传）", f: openXferSettings },
+        { ico: "📡", t: "手机互传（服务端/客户端）", f: openPeer }
+      ]},
+      { g: "信息与帮助", ico: "ℹ️", items: [
+        { ico: "📈", t: "统计", f: showStats },
+        { ico: "❓", t: "帮助", f: showHelp },
+        { ico: "📝", t: "版本变更", f: openChangelog },
+        { ico: "ℹ️", t: "关于", f: showAbout }
+      ]}
+    ];
+    // 智能AI（设置 + 智能助手）：参数化模块，注入菜单
+    if (window.AIModule && typeof AIModule.getMenuGroups === "function") {
+      AIModule.getMenuGroups().forEach(function (g) { groups.push(g); });
+    }
+    var html = "";
+    topItems.forEach(function (it, i) {
+      html += '<div class="menu-top-item" data-ti="' + i + '"><span class="menu-ico">' + it.ico + "</span><span>" + esc(it.t) + "</span></div>";
+    });
+    groups.forEach(function (grp, gi) {
+      html += '<div class="menu-group collapsed" data-gi="' + gi + '">' +
+        '<div class="menu-group-head" data-gi="' + gi + '"><span class="gh-ico">' + grp.ico + '</span><span>' + esc(grp.g) + '</span><span class="plus">＋</span></div>' +
+        '<div class="menu-group-body">';
+      grp.items.forEach(function (it, ii) {
+        html += '<div class="menu-item sub" data-gi="' + gi + '" data-ii="' + ii + '"><span class="menu-ico">' + it.ico + '</span><span>' + esc(it.t) + "</span></div>";
+      });
+      html += "</div></div>";
+    });
+    $("menuBody").innerHTML = html;
+    $("menuBody").querySelectorAll(".menu-top-item").forEach(function (el, i) { el.onclick = function () { closeSheet("sheetMenu"); topItems[i].f(); }; });
+    $("menuBody").querySelectorAll(".menu-group-head").forEach(function (el) { el.onclick = function () { el.parentNode.classList.toggle("collapsed"); }; });
+    groups.forEach(function (grp, gi) {
+      $("menuBody").querySelectorAll('.menu-item.sub[data-gi="' + gi + '"]').forEach(function (el) { el.onclick = function () { closeSheet("sheetMenu"); grp.items[+el.dataset.ii].f(); }; });
+    });
+  }
+
+  /* ---------- 筛选（省/市/类别）---------- */
+  function openFilter() {
+    var provinces = uniq(HERITAGE.map(function (b) { return b.province; }));
+    var cities = uniq(HERITAGE.map(function (b) { return b.city || "（未设置）"; }));
+    var types = uniq(HERITAGE.map(function (b) { return b.type || "其他"; }));
+    function chips(arr, set, key) {
+      return arr.map(function (v) {
+        var real = v === "（未设置）" ? "" : v;
+        return '<span class="chip' + (set.has(real) ? " on" : "") + '" data-k="' + key + '" data-v="' + esc(real) + '">' + esc(v) + "</span>";
+      }).join("");
+    }
+    $("genTitle").textContent = "筛选";
+    $("genBody").innerHTML =
+      '<div class="filter-sec"><h4>省 / 直辖市 / 自治区</h4><div class="chips" id="cProv">' + chips(provinces, filters.provinces, "province") + "</div></div>" +
+      '<div class="filter-sec"><h4>城市</h4><div class="chips" id="cCity">' + chips(cities, filters.cities, "city") + "</div></div>" +
+      '<div class="filter-sec"><h4>文物类别</h4><div class="chips" id="cTyp">' + chips(types, filters.types, "type") + "</div></div>" +
+      '<div class="filter-sec"><h4>照片状态</h4><div class="chips" id="cPhoto">' +
+        [["all", "全部"], ["has", "有照片"], ["many", "多张照片(≥3)"], ["none", "无照片"]].map(function (o) { return '<span class="chip' + (filters.photoStatus === o[0] ? " on" : "") + '" data-k="photoStatus" data-v="' + o[0] + '">' + o[1] + "</span>"; }).join("") +
+      '</div></div>' +
+      '<div class="form-actions"><button class="btn-cancel" onclick="appClearFilter()">清空筛选</button>' +
+      '<button class="btn-save" onclick="applyFilterAndJump()">确认</button></div>';
+    $("genBody").querySelectorAll(".chip").forEach(function (el) {
+      el.onclick = function () {
+        if (el.dataset.k === "photoStatus") { filters.photoStatus = el.dataset.v; el.parentNode.querySelectorAll(".chip").forEach(function (c) { c.classList.toggle("on", c === el); }); render(); return; }
+        var set = el.dataset.k === "province" ? filters.provinces : el.dataset.k === "city" ? filters.cities : filters.types;
+        var v = el.dataset.v;
+        if (set.has(v)) set.delete(v); else set.add(v);
+        el.classList.toggle("on"); render();
+      };
+    });
+    openSheet("sheetGen");
+  }
+  window.appClearFilter = function () {
+    filters.provinces.clear(); filters.cities.clear(); filters.types.clear();
+    $("genBody").querySelectorAll(".chip").forEach(function (c) { c.classList.remove("on"); });
+    render(); toast("已清空筛选");
+  };
+  window.applyFilterAndJump = function () {
+    var matched = HERITAGE.filter(passFilter);
+    if (!matched.length) { toast("没有符合条件的选项"); closeSheet("sheetGen"); return; }
+    closeSheet("sheetGen");
+    if (matched.length === 1) { appFly(matched[0].id); toast("已定位唯一匹配项"); }
+    else { appFly(matched[0].id); toast("找到 " + matched.length + " 个匹配，已跳到第一个"); }
+  };
+
+  /* ---------- 添加模式 ---------- */
+  function toggleAdd() {
+    if (measureMode) toggleMeasure();
+    if (coordPickMode) { coordPickMode = false; map._container.style.cursor = ""; }
+    addMode = !addMode;
+    $("hintAdd").classList.toggle("show", addMode);
+    $("btnMenu").textContent = addMode ? "☰ 取消添加" : "☰ 菜单";
+    if (addMode) toast("点击地图放置新古建");
+  }
+
+  /* ---------- 增删改表单（古建）---------- */
+  function openEdit(b) {
+    editing = b;
+    var provinces = uniq(HERITAGE.map(function (x) { return x.province; }));
+    var types = uniq(HERITAGE.map(function (x) { return x.type; }));
+    function opt(arr, cur) { return arr.map(function (v) { return '<option' + (v === cur ? " selected" : "") + ">" + esc(v) + "</option>"; }).join(""); }
+    var photosHtml = (b.photos || []).map(function (p, i) {
+      var src = photoSrc(p);
+      return '<div class="photo-card"><button class="rm" data-pi="' + i + '">×</button><img src="' + esc(src) + '"><input value="' + esc(p.caption || "") + '" placeholder="如正面" data-cap="' + i + '"></div>';
+    }).join("");
+    $("editTitle").textContent = b._new ? "新增古建" : "修改：" + b.name;
+    $("editBody").innerHTML =
+      '<label class="f">名称</label><input class="f" id="fName" value="' + esc(b.name) + '">' +
+      '<label class="f">省 / 直辖市 / 自治区</label><input class="f" id="fProv" list="dlProv" value="' + esc(b.province) + '"><datalist id="dlProv">' + opt(provinces, b.province) + "</datalist>" +
+      '<label class="f">城市</label><input class="f" id="fCity" value="' + esc(b.city) + '">' +
+      '<label class="f">文物类别</label><input class="f" id="fType" list="dlType" value="' + esc(b.type) + '"><datalist id="dlType">' + opt(types, b.type) + "</datalist>" +
+      '<label class="f">年代</label><input class="f" id="fDyn" value="' + esc(b.dynasty) + '">' +
+      '<label class="f">保护级别</label><input class="f" id="fLevel" value="' + esc(b.level) + '">' +
+      '<label class="f">经度</label><input class="f" id="fLon" value="' + (b.lon != null ? b.lon : "") + '">' +
+      '<label class="f">纬度</label><input class="f" id="fLat" value="' + (b.lat != null ? b.lat : "") + '">' +
+      '<label class="f">介绍</label><textarea class="f" id="fIntro" rows="3">' + esc(b.intro) + '</textarea>' +
+      '<label class="f">文物特点</label><textarea class="f" id="fFeat" rows="2">' + esc(b.features) + '</textarea>' +
+      '<label class="f">照片（可多张）</label><input type="file" id="fPhotos" accept="image/*" multiple>' +
+      '<div class="photo-grid" id="phGrid">' + photosHtml + "</div>" +
+      '<div class="form-actions">' +
+      (b._new ? "" : '<button class="btn-danger" onclick="appDel(\'' + esc(b.id) + '\')">删除</button>') +
+      '<button class="btn-cancel" onclick="closeSheet(\'sheetEdit\')">取消</button>' +
+      '<button class="btn-save" onclick="appSave()">保存</button></div>';
+    $("editBody").querySelectorAll(".photo-card .rm").forEach(function (btn) { btn.onclick = function () { b.photos.splice(+btn.dataset.pi, 1); openEdit(b); }; });
+    $("editBody").querySelectorAll("input[data-cap]").forEach(function (inp) { inp.onchange = function () { b.photos[+inp.dataset.cap].caption = inp.value; }; });
+    // 照片网格局部刷新（v1.8.3 关键修复）：只更新 phGrid，不重建 input.f 元素，
+    // 否则 WebView 自动填充对勾等已识别状态会随 DOM 重建丢失。
+    function renderPhotoGrid() {
+      var grid = $("phGrid"); if (!grid) { openEdit(b); return; } // 兜底
+      grid.innerHTML = buildPhotosHtml(b);
+      bindPhotoCardEvents();
+    }
+    function buildPhotosHtml(b2) {
+      var arr = b2.photos || [];
+      var out = "";
+      for (var i = 0; i < arr.length; i++) {
+        var p = arr[i], src = photoSrc(p);
+        out += '<div class="photo-card"><button class="rm" data-pi="' + i + '">×</button><img src="' + esc(src) + '"><input value="' + esc(p.caption || "") + '" placeholder="如正面" data-cap="' + i + '"></div>';
+      }
+      return out;
+    }
+    function bindPhotoCardEvents() {
+      $("editBody").querySelectorAll(".photo-card .rm").forEach(function (btn) { btn.onclick = function () { b.photos.splice(+btn.dataset.pi, 1); renderPhotoGrid(); }; });
+      $("editBody").querySelectorAll("input[data-cap]").forEach(function (inp) { inp.onchange = function () { b.photos[+inp.dataset.cap].caption = inp.value; }; });
+    }
+    bindPhotoCardEvents();
+    // v3.31 #281：表单文本实时落盘到 editing，避免重建表单时丢失已填内容
+    ["fName", "fOffice", "fStation", "fChan", "fType", "fLon", "fLat"].forEach(function (id) {
+      var el = $(id); if (!el) return;
+      el.oninput = flushEditFields; el.onchange = flushEditFields;
+    });
+    $("fPhotos").onchange = function () {
+      var files = this.files;
+      Array.prototype.forEach.call(files, function (file) {
+        var r = new FileReader();
+        r.onload = function () {
+          // v3.31：>1.5M 的照片先压缩（canvas，按会话偏好）再落盘，只存压缩版
+          compressDataUrlIfBig(r.result, function (d) {
+            var rel = "";
+            try { if (window.Android && typeof window.Android.storePhoto === "function") rel = window.Android.storePhoto(b.id, file.name, d); } catch (e) {}
+            if (rel) b.photos.push({ file: rel, caption: "" }); else b.photos.push({ data: d, caption: "" });
+            renderPhotoGrid();
+          });
+        };
+        r.readAsDataURL(file);
+      });
+    };
+    openSheet("sheetEdit");
+  }
+  window.appSave = function () {
+    var b = editing;
+    b.name = $("fName").value.trim() || "未命名";
+    b.province = $("fProv").value.trim();
+    b.city = $("fCity").value.trim();
+    b.type = $("fType").value.trim() || "其他";
+    b.dynasty = $("fDyn").value.trim();
+    b.level = $("fLevel").value.trim();
+    b.intro = $("fIntro").value.trim();
+    b.features = $("fFeat").value.trim();
+    var lon = parseFloat($("fLon").value), lat = parseFloat($("fLat").value);
+    if (!isNaN(lon) && !isNaN(lat)) { b.lon = lon; b.lat = lat; b.geom = "Point"; }
+    if (b._new) { delete b._new; HERITAGE.push(b); }
+    save(); render(); closeSheet("sheetEdit"); toast("已保存");
+  };
+  window.appEdit = function (id) { var b = HERITAGE.find(function (x) { return x.id === id; }); if (b) openEdit(b); };
+  window.appDel = function (id) {
+    ask("删除古建", "确定删除该古建？",
+      [{ t: "取消", cls: "btn-cancel", v: 0 }, { t: "删除", cls: "btn-confirm2", v: 1 }], function (v) {
+        if (!v) return;
+        HERITAGE = HERITAGE.filter(function (x) { return x.id !== id; });
+        save(); render(); closeSheet("sheetEdit"); toast("已删除");
+      });
+  };
+
+  /* ---------- 拍照打卡 ---------- */
+  window.appCheckin = function (id) { openCheckin(id); };
+  function openCheckin(id) {
+    var b = id ? HERITAGE.find(function (x) { return x.id === id; }) : null;
+    editingCheckin = { targetId: id, photo: "", arrivalTime: nowLocalDateTime(), travelTime: "", experience: "" };
+    var title = b ? ("打卡：" + b.name) : "拍照打卡";
+    $("ciTitle").textContent = title;
+    var selHtml = "";
+    if (!b) {
+      var opts = HERITAGE.filter(function (x) { return x.lat != null; }).map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name) + "（" + esc(x.city) + "）</option>"; }).join("");
+      selHtml = '<label class="f">选择古建</label><select class="f" id="ciTarget">' + opts + "</select>";
+    }
+    $("ciBody").innerHTML =
+      selHtml +
+      '<label class="f">打卡照片</label><input type="file" id="ciPhoto" accept="image/*">' +
+      '<div id="ciPhotoPrev" style="margin-top:6px"></div>' +
+      '<label class="f">到达时间</label><input class="f" type="datetime-local" id="ciArrival" value="' + editingCheckin.arrivalTime + '">' +
+      '<label class="f">旅游时间（如 2 小时 / 半天）</label><input class="f" id="ciTravel" placeholder="本次游览时长">' +
+      '<label class="f">旅游体验</label><textarea class="f" id="ciExp" rows="4" placeholder="记录你的游览感受、看点、避坑…"></textarea>' +
+      '<div class="form-actions"><button class="btn-cancel" onclick="closeSheet(\'sheetCheckin\')">取消</button>' +
+      '<button class="btn-save" onclick="appSaveCheckin()">保存打卡</button></div>';
+    $("ciPhoto").onchange = function () {
+      var file = this.files && this.files[0]; if (!file) return;
+      var r = new FileReader();
+      r.onload = function () {
+        // v3.31：>1.5M 的打卡照片先压缩再落盘
+        compressDataUrlIfBig(r.result, function (d) {
+          editingCheckin.photo = "";
+          try { if (window.Android && typeof window.Android.storePhoto === "function") editingCheckin.photo = window.Android.storePhoto((id || "checkin_" + Date.now()), file.name, d); } catch (e) {}
+          if (!editingCheckin.photo) editingCheckin.photo = d;
+          $("ciPhotoPrev").innerHTML = '<img src="' + (editingCheckin.photo.indexOf("data:") === 0 ? editingCheckin.photo : (window.Android && window.Android.readPhoto ? window.Android.readPhoto(editingCheckin.photo) : "")) + '" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">';
+        });
+      };
+      r.readAsDataURL(file);
+    };
+    openSheet("sheetCheckin");
+  }
+  window.appSaveCheckin = function () {
+    var b = editingCheckin.targetId ? HERITAGE.find(function (x) { return x.id === editingCheckin.targetId; }) : HERITAGE.find(function (x) { return x.id === $("ciTarget").value; });
+    if (!b) { toast("请选择要打卡的古建"); return; }
+    b.checkins = b.checkins || [];
+    b.checkins.push({
+      id: "c" + Date.now(),
+      photo: editingCheckin.photo,
+      arrivalTime: $("ciArrival").value || nowLocalDateTime(),
+      travelTime: $("ciTravel").value.trim(),
+      experience: $("ciExp").value.trim(),
+      createdAt: Date.now()
+    });
+    save(); render();
+    if (MARKERS[b.id]) MARKERS[b.id].setPopupContent(popupHtml(b));
+    closeSheet("sheetCheckin"); toast("打卡成功：" + b.name);
+  }
+
+  /* ---------- 我的打卡路线（按时间排列）---------- */
+  function openRoutes() {
+    var all = [];
+    HERITAGE.forEach(function (b) {
+      (b.checkins || []).forEach(function (c) { all.push({ b: b, c: c }); });
+    });
+    all.sort(function (a, b) {
+      var ta = a.c.arrivalTime || "", tb = b.c.arrivalTime || "";
+      if (ta !== tb) return tb < ta ? -1 : 1;
+      return (b.c.createdAt || 0) - (a.c.createdAt || 0);
+    });
+    var html = '<p style="font-size:13px;color:#555;margin-bottom:8px">共 ' + all.length + " 次打卡，按到达时间从新到旧排列：</p>";
+    if (!all.length) html += '<div class="empty-tip">还没有打卡记录，去「拍照打卡 → 打卡」添加吧。</div>';
+    all.forEach(function (it, idx) {
+      var photoSrc0 = it.c.photo ? (it.c.photo.indexOf("data:") === 0 ? it.c.photo : (window.Android && window.Android.readPhoto ? window.Android.readPhoto(it.c.photo) : "")) : "";
+      html += '<div class="route-item">' +
+        '<span class="go" onclick="appFly(\'' + esc(it.b.id) + '\')">定位 ›</span>' +
+        '<div class="rt">' + (idx + 1) + ". " + esc(it.b.name) + ' <span style="font-size:12px;color:#8a7c70">（' + esc(it.b.city) + "）</span></div>" +
+        '<div class="rm">到达：' + esc(it.c.arrivalTime || "—") + (it.c.travelTime ? "　游览：" + esc(it.c.travelTime) : "") + "</div>" +
+        (it.c.experience ? '<div class="rm" style="color:#3a2e28">' + esc(it.c.experience) + "</div>" : "") +
+        (photoSrc0 ? '<img src="' + esc(photoSrc0) + '" style="width:72px;height:72px;object-fit:cover;border-radius:6px;margin-top:6px;border:1px solid var(--border)">' : "") +
+        '</div>';
+    });
+    $("genTitle").textContent = "我的打卡路线";
+    $("genBody").innerHTML = html;
+    openSheet("sheetGen");
+  }
+
+  // v3.31 #281：把表单文本实时写回 editing，避免任何重建 editBody 的操作丢失已填内容
+  function flushEditFields() {
+    if (!editing) return;
+    var g = function (id) { var el = $(id); return el ? el.value : undefined; };
+    if (g("fName") != null) editing.name = g("fName");
+    if (g("fOffice") != null) editing.office = g("fOffice");
+    if (g("fStation") != null) editing.station = g("fStation");
+    if (g("fChan") != null) editing.chan = g("fChan");
+    if (g("fType") != null) editing.btype = g("fType");
+    var lon = parseFloat(g("fLon")), lat = parseFloat(g("fLat"));
+    if (!isNaN(lon) && !isNaN(lat)) { editing.lon = lon; editing.lat = lat; editing.geom = "Point"; }
+  }
+  /* ---------- 导航 ---------- */
+  window.appNav = function (id) {
+    var b = HERITAGE.find(function (x) { return x.id === id; });
+    if (!b) return;
+    if (b.lat == null || b.lon == null) { toast("该古建无坐标信息"); return; }
+    var lat = b.lat, lon = b.lon, name = b.name;
+    var geoUrl = "geo:" + lat + "," + lon + "?q=" + lat + "," + lon + "(" + name + ")";
+    if (window.Android && typeof window.Android.openExternal === "function") window.Android.openExternal(geoUrl);
+    else window.open(geoUrl, "_blank");
+    toast("正在打开导航…");
+  };
+  window.appClosePopup = function () { map.closePopup(); };
+  window.copyCoord = function (lat, lon) {
+    var text = lat.toFixed(6) + "," + lon.toFixed(6);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast("已复制：" + text); });
+    else { var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("已复制：" + text); } catch (e) {} ta.remove(); }
+  };
+
+  /* ---------- 列表视图 ---------- */
+  function toggleList() {
+    listMode = !listMode;
+    $("listView").style.display = listMode ? "block" : "none";
+    $("map").style.display = listMode ? "none" : "block";
+    var bs = $("baseSwitcher"); if (bs) bs.style.display = listMode ? "none" : "block";
+    var lg = $("legend"); if (lg) lg.style.display = listMode ? "none" : "block";
+    var hm = $("hintMeasure"); if (hm) hm.style.display = listMode ? "none" : "";
+    if (listMode) renderList(); else setTimeout(function () { map.invalidateSize(); }, 100);
+  }
+  function renderList() {
+    var html = "";
+    HERITAGE.filter(passFilter).forEach(function (b) {
+      html += '<div class="list-card"><span class="go" onclick="appFly(\'' + esc(b.id) + '\')">快速定位 ›</span>' +
+        "<h3>" + esc(b.name) + "</h3>" +
+        '<div class="meta">' + esc(b.province) + " · " + esc(b.city) + " · " + esc(b.type) + ((b.checkins || []).length ? " · 已打卡" + b.checkins.length : "") + "</div></div>";
+    });
+    $("listView").innerHTML = html || "<p style='padding:20px;color:#888'>无匹配结果</p>";
+  }
+  window.appFly = function (id) {
+    var b = HERITAGE.find(function (x) { return x.id === id; });
+    if (!b) return;
+    if (b.lat == null || b.lon == null) { toast("该古建无坐标信息"); return; }
+    listMode = false; $("listView").style.display = "none"; $("map").style.display = "block";
+    setTimeout(function () {
+      map.invalidateSize(); map.setView([b.lat, b.lon], 15);
+      if (MARKERS[b.id]) MARKERS[b.id].openPopup();
+    }, 150);
+  };
+
+  /* ---------- 定位 ---------- */
+  var myLocationMarker = null;
+  function locateMe() {
+    if (!navigator.geolocation) { toast("设备不支持定位"); return; }
+    toast("正在定位…");
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var lat = p.coords.latitude, lon = p.coords.longitude;
+      map.setView([lat, lon], 15);
+      if (myLocationMarker) map.removeLayer(myLocationMarker);
+      myLocationMarker = L.circleMarker([lat, lon], { radius: 10, color: "#d98723", fillColor: "#d98723", fillOpacity: 0.9, weight: 3 }).addTo(map).bindPopup("我的位置（" + lat.toFixed(6) + ", " + lon.toFixed(6) + "）").openPopup();
+      toast("定位成功");
+    }, function (err) {
+      if (err.code === err.PERMISSION_DENIED) { toast("定位权限未授权，正在跳转设置…"); if (window.Android && typeof window.Android.openLocationSettings === "function") setTimeout(function () { window.Android.openLocationSettings(); }, 1200); }
+      else if (err.code === err.TIMEOUT) toast("定位超时，请重试");
+      else toast("定位失败：" + (err.message || "未知错误"));
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  }
+
+  /* ---------- 测距 ---------- */
+  var measureMode = false, measurePoints = [], measureLayer = null, measureMarkers = [], measureTooltips = [];
+  function toggleMeasure() {
+    measureMode = !measureMode;
+    if (measureMode) {
+      measurePoints = []; addMode = false; coordPickMode = false;
+      $("hintAdd").classList.remove("show"); $("btnMenu").textContent = "☰ 结束测距";
+      toast("测距模式：依次点击地图上的点，双击或点「结束测距」结束");
+      $("hintMeasure").classList.add("show"); map._container.style.cursor = "crosshair"; map.doubleClickZoom.disable();
+    } else { clearMeasure(); $("btnMenu").textContent = "☰ 菜单"; $("hintMeasure").classList.remove("show"); map._container.style.cursor = ""; map.doubleClickZoom.enable(); }
+  }
+  function clearMeasure() {
+    if (measureLayer) { map.removeLayer(measureLayer); measureLayer = null; }
+    measureMarkers.forEach(function (m) { map.removeLayer(m); }); measureMarkers = [];
+    measureTooltips.forEach(function (t) { map.removeLayer(t); }); measureTooltips = [];
+    measurePoints = [];
+  }
+  function onMeasureClick(e) {
+    if (!measureMode) return;
+    measurePoints.push(e.latlng);
+    var dot = L.circleMarker(e.latlng, { radius: 5, color: "#d98723", fillColor: "#fff", fillOpacity: 1, weight: 2 }).addTo(map); measureMarkers.push(dot);
+    if (measureLayer) map.removeLayer(measureLayer);
+    measureTooltips.forEach(function (t) { map.removeLayer(t); }); measureTooltips = [];
+    if (measurePoints.length >= 2) {
+      measureLayer = L.polyline(measurePoints, { color: "#d98723", weight: 3, dashArray: "6,4" }).addTo(map);
+      var total = 0;
+      for (var i = 1; i < measurePoints.length; i++) {
+        var d = measurePoints[i - 1].distanceTo(measurePoints[i]); total += d;
+        var mid = L.latLng((measurePoints[i - 1].lat + measurePoints[i].lat) / 2, (measurePoints[i - 1].lng + measurePoints[i].lng) / 2);
+        var segLabel = L.marker(mid, { icon: L.divIcon({ className: "measure-tip", html: '<span style="background:#6b2e2e;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;white-space:nowrap">' + fmtDist(d) + '</span>', iconSize: [60, 16], iconAnchor: [30, 8] }) }).addTo(map);
+        measureTooltips.push(segLabel);
+      }
+      var lastPt = measurePoints[measurePoints.length - 1];
+      var totalLabel = L.marker(lastPt, { icon: L.divIcon({ className: "measure-tip", html: '<span style="background:#d98723;color:#fff;padding:3px 8px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap">总计 ' + fmtDist(total) + '</span>', iconSize: [100, 20], iconAnchor: [50, -12] }) }).addTo(map);
+      measureTooltips.push(totalLabel);
+    }
+  }
+  function fmtDist(d) { if (d < 1000) return Math.round(d) + " m"; return (d / 1000).toFixed(2) + " km"; }
+  window.appFinishMeasure = function () { if (measureMode) toggleMeasure(); };
+
+  /* ---------- 周边搜索 ---------- */
+  function nearbySearch() {
+    var pts = HERITAGE.filter(function (b) { return b.lat != null; });
+    var html = '<label class="f">选择中心古建</label>' +
+      '<select class="f" id="nearbyCenter" style="margin-bottom:10px">' + pts.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name) + "</option>"; }).join("") + "</select>" +
+      '<label class="f">搜索半径（米）</label><input class="f" type="number" id="nearbyRadius" value="200000" min="50" max="5000000" style="margin-bottom:10px">' +
+      '<div class="form-actions"><button class="btn-save" onclick="appDoNearby()">搜索</button></div>' +
+      '<div id="nearbyResult" style="margin-top:12px"></div>';
+    $("genTitle").textContent = "周边搜索";
+    $("genBody").innerHTML = html; openSheet("sheetGen");
+  }
+  window.appDoNearby = function () {
+    var centerId = $("nearbyCenter").value, radius = parseFloat($("nearbyRadius").value);
+    if (!centerId || isNaN(radius) || radius < 50) { toast("请选择古建并输入有效半径"); return; }
+    var center = HERITAGE.find(function (b) { return b.id === centerId; });
+    if (!center || center.lat == null) { toast("中心古建无坐标"); return; }
+    var centerLatLng = L.latLng(center.lat, center.lon), results = [];
+    HERITAGE.forEach(function (b) { if (b.id === centerId || b.lat == null) return; var d = centerLatLng.distanceTo(L.latLng(b.lat, b.lon)); if (d <= radius) results.push({ b: b, dist: d }); });
+    results.sort(function (a, b) { return a.dist - b.dist; });
+    if (window._nearbyCircle) map.removeLayer(window._nearbyCircle);
+    window._nearbyCircle = L.circle([center.lat, center.lon], { radius: radius, color: "#b8862f", fillColor: "#b8862f", fillOpacity: 0.08, weight: 2, dashArray: "4,4" }).addTo(map);
+    map.fitBounds(window._nearbyCircle.getBounds(), { padding: [30, 30] });
+    var html = "<p style='margin:0 0 6px'><b>中心：</b>" + esc(center.name) + " · 半径 " + fmtDist(radius) + "</p>";
+    if (!results.length) html += '<p style="color:#888">范围内无其他古建</p>';
+    else {
+      html += '<p style="color:#b8862f;margin:0 0 6px">找到 ' + results.length + " 个古建：</p>";
+      results.forEach(function (r) {
+        html += '<div class="list-card" style="margin-bottom:4px;padding:6px 10px"><span class="go" onclick="appFly(\'' + esc(r.b.id) + '\')">定位 ›</span>' +
+          '<span style="font-size:14px">' + esc(r.b.name) + '</span><span style="font-size:11px;color:#888;float:right">' + fmtDist(r.dist) + "</span>" +
+          '<div class="meta">' + esc(r.b.city) + " · " + esc(r.b.type) + "</div></div>";
+      });
+    }
+    $("nearbyResult").innerHTML = html; toast("找到 " + results.length + " 个古建");
+  };
+
+  /* ---------- 获取坐标 ---------- */
+  function getCoordinates() {
+    var html = '<div style="margin-bottom:12px">' +
+      '<button class="tbtn" style="width:100%;margin-bottom:8px;display:block" onclick="coordGetGPS()">📡 获取当前GPS坐标</button>' +
+      '<button class="tbtn" style="width:100%;margin-bottom:8px;display:block" onclick="coordPickMap()">👆 点选地图获取坐标</button>' +
+      '<button class="tbtn" style="width:100%;margin-bottom:8px;display:block" onclick="coordSearchHeritage()">🔍 搜索古建坐标</button>' +
+      '</div><div id="coordResult" style="background:#f7f1e8;border-radius:8px;padding:12px;min-height:60px;font-size:14px;color:#555">请选择获取坐标的方式</div>';
+    $("genTitle").textContent = "获取坐标"; $("genBody").innerHTML = html; openSheet("sheetGen");
+  }
+  window.coordGetGPS = function () {
+    if (!navigator.geolocation) { $("coordResult").innerHTML = "<span style='color:#c0392b'>设备不支持定位</span>"; return; }
+    $("coordResult").innerHTML = "<span style='color:#888'>正在定位…</span>";
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var lat = p.coords.latitude, lon = p.coords.longitude, acc = p.coords.accuracy ? p.coords.accuracy.toFixed(0) : "?";
+      $("coordResult").innerHTML = '<div style="font-size:16px;color:#6b2e2e;font-weight:600;margin-bottom:8px">当前坐标</div>' +
+        '<table style="width:100%;font-size:14px;border-collapse:collapse"><tr><td style="color:#888;padding:3px 0">纬度：</td><td>' + lat.toFixed(6) + '</td></tr>' +
+        '<tr><td style="color:#888;padding:3px 0">经度：</td><td>' + lon.toFixed(6) + '</td></tr><tr><td style="color:#888;padding:3px 0">精度：</td><td>±' + acc + ' m</td></tr></table>' +
+        '<button class="tbtn" style="margin-top:10px;width:100%" onclick="copyCoord(' + lat + ',' + lon + ')">复制坐标</button>' +
+        '<button class="tbtn" style="margin-top:6px;width:100%" onclick="map.setView([' + lat + ',' + lon + '],15);closeSheet(\'sheetGen\')">在地图上查看</button>';
+      if (myLocationMarker) map.removeLayer(myLocationMarker);
+      myLocationMarker = L.circleMarker([lat, lon], { radius: 10, color: "#d98723", fillColor: "#d98723", fillOpacity: 0.9, weight: 3 }).addTo(map).bindPopup("当前坐标").openPopup();
+      map.setView([lat, lon], 15);
+    }, function (err) {
+      if (err.code === err.PERMISSION_DENIED) $("coordResult").innerHTML = "<span style='color:#c0392b'>定位权限未授权</span><button class='tbtn' style='margin-top:8px;width:100%' onclick='gotoLocSettings()'>去设置开启定位</button>";
+      else $("coordResult").innerHTML = "<span style='color:#c0392b'>定位失败：" + (err.message || "未知错误") + "</span>";
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  };
+  window.gotoLocSettings = function () { if (window.Android && typeof window.Android.openLocationSettings === "function") window.Android.openLocationSettings(); else toast("请在系统设置中开启定位"); };
+  window.coordPickMap = function () { coordPickMode = true; closeSheet("sheetGen"); if (listMode) toggleList(); $("btnMenu").textContent = "☰ 取消拾取"; map._container.style.cursor = "crosshair"; toast("点击地图任意位置获取坐标"); };
+  window.coordSearchHeritage = function () {
+    var pts = HERITAGE.filter(function (b) { return b.lat != null; });
+    $("coordResult").innerHTML = '<input class="f" id="coordSearchInput" placeholder="输入古建名称…" style="margin-bottom:8px" oninput="coordDoSearch()"><div id="coordSearchResult" style="max-height:300px;overflow:auto"></div>';
+    window.coordDoSearch = function () {
+      var q = (($("coordSearchInput") || {}).value || "").trim().toLowerCase();
+      var matched = pts.filter(function (b) { return !q || b.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 30);
+      $("coordSearchResult").innerHTML = matched.map(function (b) {
+        return '<div class="list-card" style="margin-bottom:4px;padding:6px 10px;cursor:pointer" onclick="copyCoord(' + b.lat + ',' + b.lon + ')"><span style="font-size:14px">' + esc(b.name) + '</span><span style="font-size:11px;color:#888;float:right">' + b.lat.toFixed(6) + ',' + b.lon.toFixed(6) + '</span><div class="meta">' + esc(b.city) + ' · ' + esc(b.type) + "</div></div>";
+      }).join("") || "<p style='color:#888;padding:8px'>无匹配</p>";
+    };
+    coordDoSearch();
+  };
+
+  /* ---------- 批量导入照片（智能模糊匹配）---------- */
+  function nameNoExt(n) { return String(n).replace(/\.[^.]+$/, "").trim(); }
+  function batchImportPhotos() {
+    var html = '<div style="font-size:14px;color:#555;margin-bottom:12px"><p>选择照片或照片 ZIP，系统按文件名自动匹配古建（相等/包含/容错错字漏字）。唯一匹配自动保存；多匹配弹窗勾选（可多选）。</p></div>' +
+      '<button class="tbtn" style="width:100%" onclick="pickPhotosForImport()">📂 选择照片 / 照片ZIP</button><div id="batchPhotoResult" style="margin-top:12px"></div>';
+    $("genTitle").textContent = "批量导入照片"; $("genBody").innerHTML = html; openSheet("sheetGen");
+  }
+  window.pickPhotosForImport = function () {
+    if (!(window.Android && typeof window.Android.pickFiles === "function")) { legacyPickPhotos(); return; }
+    $("batchPhotoResult").innerHTML = "<span style='color:#888'>请在系统选择器中选取照片或 ZIP…</span>";
+    window.Android.pickFiles("image/*");
+  };
+  window.onPickFiles = function (json) {
+    try {
+    var list; try { list = JSON.parse(json); } catch (e) { list = []; }
+    if (!list || !list.length) { toast("未选择文件"); window.__kmzImport = false; window.__bldImport = false; window.__ovobjFolderImport = false; window.__objFolderImport = false; return; }
+    // KMZ 导入模式：交给原生解压（见 importOvkmz 设置的 __pickMode）
+    if (window.__pickMode === "kmz") {
+      window.__pickMode = "";
+      var kmz = list.filter(function (f) { return /\.(kmz|ovkmz|kml)$/i.test(f.name); })[0];
+      if (!kmz) { toast("请选择 .kmz/.ovkmz/.kml 文件"); return; }
+      busy("正在解压导入文件…"); busyDetail("正在解压 KML 与照片，请稍后…");
+      setTimeout(function () { window.Android.importKmz(kmz.path, XFER.resume); }, 30);
+      return;
+    }
+    // ovobj 导入路由（经 readFileBase64 读二进制 -> JS 解析）
+    if (window.__ovobjImport) {
+      window.__ovobjImport = false;
+      var ovobjF = list.find(function (f) { return /\.ovobj$/i.test(f.name); });
+      if (ovobjF) {
+        busy("正在导入 " + ovobjF.name + "，请稍后…"); busyDetail("解析奥维坐标中");
+        setTimeout(function () {
+          try {
+            var b64 = window.Android.readFileBase64(ovobjF.path);
+            var bytes = b64ToBytes(b64);
+            var buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+            var pts = parseOvobj(buf);
+            cacheOvobjTemplate(bytes);
+            mergeCoordPoints(pts, ovobjF.name);
+          } catch (e) { idle(); toast("导入失败：" + e.message); }
+        }, 40);
+        return;
+      }
+      toast("未选择 ovobj 文件"); return;
+    }
+    // obj/txt/csv 坐标文本导入路由
+    if (window.__objImport) {
+      window.__objImport = false;
+      var objF = list.find(function (f) { return /\.(obj|txt|csv)$/i.test(f.name); });
+      if (objF) {
+        busy("正在导入 " + objF.name + "，请稍后…"); busyDetail("解析坐标文本中");
+        setTimeout(function () {
+          try {
+            var b64b = window.Android.readFileBase64(objF.path);
+            var bytes2 = b64ToBytes(b64b);
+            var text = new TextDecoder("utf-8").decode(bytes2);
+            mergeCoordPoints(parseObjText(text), objF.name);
+          } catch (e) { idle(); toast("导入失败：" + e.message); }
+        }, 40);
+        return;
+      }
+      toast("未选择 obj / txt / csv 文件"); return;
+    }
+    // ovobj 文件夹批量导入路由（v3.31 #280：pickFolder 递归枚举后回传）
+    if (window.__ovobjFolderImport) {
+      window.__ovobjFolderImport = false;
+      importOvobjFolder(list); return;
+    }
+    // obj 文件夹批量导入路由
+    if (window.__objFolderImport) {
+      window.__objFolderImport = false;
+      importObjFolder(list); return;
+    }
+    var zips = list.filter(function (f) { return /\.zip$/i.test(f.name); });
+    var imgs = list.filter(function (f) { return !/\.zip$/i.test(f.name); });
+    var items = imgs.map(function (f) { return { fname: nameNoExt(f.name), base: normalizePhotoName(f.name), path: f.path, folder: "" }; });
+    zips.forEach(function (z) {
+      var arr; try { arr = JSON.parse(window.Android.unzipImages(z.path)); } catch (e) { arr = []; }
+      arr.forEach(function (x) { items.push({ fname: nameNoExt(x.name), base: normalizePhotoName(x.name), path: x.path, folder: x.folder || "" }); });
+    });
+    runPhotoMatch(items);
+    } catch (e) {
+      try { toast("文件回调出错：" + (e && (e.stack || e.message || e))); } catch (e2) {}
+    }
+  };
+  function legacyPickPhotos() {
+    var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,.zip"; inp.multiple = true;
+    inp.onchange = function () {
+      var files = Array.prototype.slice.call(this.files);
+      if (!files.length) { toast("未选择文件"); return; }
+      var items = [], todo = files.length, done = 0, ready = function () { if (++done === todo) runPhotoMatch(items); };
+      files.forEach(function (f) {
+        if (/\.zip$/i.test(f.name)) {
+          JSZip.loadAsync(f).then(function (zip) {
+            var names = Object.keys(zip.files).filter(function (n) { return /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(n) && !zip.files[n].dir; });
+            return Promise.all(names.map(function (n) {
+              return zip.file(n).async("base64").then(function (b64) {
+                items.push({ fname: nameNoExt(n.split("/").pop()), base: normalizePhotoName(n), data: "data:image/jpeg;base64," + b64, folder: (n.indexOf("/") >= 0 ? n.substring(0, n.indexOf("/")) : "") });
+              });
+            }));
+          }).catch(function () {}).then(ready);
+        } else {
+          var r = new FileReader();
+          r.onload = function () { items.push({ fname: nameNoExt(f.name), base: normalizePhotoName(f.name), data: r.result, folder: "" }); ready(); };
+          r.readAsDataURL(f);
+        }
+      });
+    };
+    inp.click();
+  }
+  /* ============ 模糊 / 智能匹配 ============ */
+  function longestCommonSubstringLen(a, b) { var m = a.length, n = b.length, best = 0, prev = new Array(n + 1).fill(0), cur; for (var i = 1; i <= m; i++) { cur = new Array(n + 1).fill(0); for (var j = 1; j <= n; j++) { if (a.charAt(i - 1) === b.charAt(j - 1)) { cur[j] = prev[j - 1] + 1; if (cur[j] > best) best = cur[j]; } } prev = cur; } return best; }
+  function editDistance(a, b) { var m = a.length, n = b.length, dp = []; for (var i = 0; i <= m; i++) { dp[i] = new Array(n + 1); dp[i][0] = i; } for (var j = 0; j <= n; j++) dp[0][j] = j; for (var i = 1; i <= m; i++) for (var j = 1; j <= n; j++) { var cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1; dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost); } return dp[m][n]; }
+  function commonBigrams(a, b) { function g(s) { var o = {}; for (var i = 0; i < s.length - 1; i++) { var k = s.substr(i, 2); o[k] = (o[k] || 0) + 1; } return o; } var ga = g(a), gb = g(b), c = 0; for (var k in ga) if (gb[k]) c += Math.min(ga[k], gb[k]); return c; }
+  function scoreMatch(a, b) {
+    a = (a || "").trim(); b = (b || "").trim(); if (!a || !b) return 0;
+    if (a === b) return 1000;
+    if (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return 900;
+    var lcs = longestCommonSubstringLen(a, b);
+    if (lcs >= 2) { var r = lcs / Math.max(a.length, b.length), ed = editDistance(a, b); if (r >= 0.5 || (ed <= 2 && Math.min(a.length, b.length) >= 3)) return 700 + lcs * 5 - ed * 30; if (r >= 0.34) return 400 + lcs * 5; }
+    var g = commonBigrams(a, b); if (g >= 2) return 200 + g * 20; return 0;
+  }
+  function smartFuzzyMatches(base, cands) {
+    var out = []; (cands || HERITAGE).forEach(function (b) { if (!b.name) return; var s = scoreMatch(base, b.name.trim()); if (s > 0) out.push({ b: b, s: s }); });
+    out.sort(function (x, y) { return y.s - x.s; }); return out.slice(0, 12);
+  }
+  // 匹配置信度文案：分数越高越可信（700+ 已自动落库；200~699 让用户确认）
+  function confLabel(s) {
+    if (s >= 700) return "高匹配";
+    if (s >= 350) return "较可能";
+    if (s >= 200) return "待确认";
+    return "低";
+  }
+  function matchScopeForFolder(folder) {
+    folder = (folder || "").trim(); if (!folder) return { cands: HERITAGE, label: "" };
+    var provs = uniq(HERITAGE.map(function (b) { return b.province || "未设置"; }));
+    var best = null, bestS = 0; provs.forEach(function (o) { var s = scoreMatch(folder, o); if (s > bestS) { bestS = s; best = o; } });
+    if (best && bestS >= 350) { var c = HERITAGE.filter(function (b) { return (b.province || "未设置") === best; }); if (c.length) return { cands: c, label: "省/市：" + best }; }
+    var types = uniq(HERITAGE.map(function (b) { return b.type || "其他"; }));
+    var bestT = null, bestTS = 0; types.forEach(function (t) { var s = scoreMatch(folder, t); if (s > bestTS) { bestTS = s; bestT = t; } });
+    if (bestT && bestTS >= 350) { var c2 = HERITAGE.filter(function (b) { return (b.type || "其他") === bestT; }); if (c2.length) return { cands: c2, label: "类别：" + bestT }; }
+    return { cands: HERITAGE, label: "" };
+  }
+  // 落盘保存一张照片（原生 linkPhoto；浏览器回退 base64）。绑定即按「古建名 #顺序号」归档命名，便于核对来源（v3.14 同源）。
+  function linkOrBase64(b, it) {
+    function _push(rel, cap) { b.photos = b.photos || []; var seq = b.photos.length + 1; b.photos.push({ file: rel, caption: cap || (b.name || "古建") + " #" + seq, added: Date.now() }); return true; }
+    var nm = (b.name || "古建") + " #" + ((b.photos ? b.photos.length : 0) + 1);
+    if (window.Android && window.Android.linkPhoto) {
+      try { var rel = window.Android.linkPhoto(b.id, it.path, nm + ".jpg"); if (rel) { queueCompress(rel); return _push(rel, nm); } } catch (e) {}
+    }
+    if (it.data) return _push(it.data, nm);
+    return false;
+  }
+  function dupCheck(it, b) {
+    if (!(window.Android && window.Android.fileSha256 && window.Android.photoSha256)) return false;
+    try {
+      var cSha = window.Android.fileSha256(it.path); var exPhoto = null;
+      (b.photos || []).some(function (ep) { if (!ep.file) return false; var eSha = ""; try { eSha = window.Android.photoSha256(ep.file); } catch (e) {} if (eSha && eSha === cSha) { exPhoto = ep; return true; } return false; });
+      if (exPhoto) return { b: b, ep: exPhoto };
+    } catch (e) {}
+    return false;
+  }
+  // 照片落盘后按内容(SHA-256)比对，重复则记入待确认
+  function runPhotoMatch(items) {
+    var pending = []; var auto = 0;
+    items.forEach(function (it) {
+      var scope = matchScopeForFolder(it.folder);
+      var ms = smartFuzzyMatches(it.base, scope.cands);
+      var top = ms[0];
+      if (top && top.s >= 700) {
+        var b = top.b;
+        if (it.path && (window.Android && window.Android.fileSha256)) {
+          var dup = dupCheck(it, b);
+          if (dup) { pending.push({ it: it, b: b, ep: dup.ep }); return; }
+        }
+        if (linkOrBase64(b, it)) { auto++; } else { pending.push({ it: it, b: b, candidates: ms, multi: false }); }
+      } else if (ms.length && ms[0].s >= 200) {
+        pending.push({ it: it, b: null, candidates: ms, multi: true, scopeLabel: scope.label });
+      } else {
+        pending.push({ it: it, b: null, candidates: [], multi: true, nomatch: true, scopeLabel: scope.label });
+      }
+    });
+    if (auto || pending.length === 0) { render(); save(); toast("已自动匹配保存 " + auto + " 张照片" + (pending.length ? "，另有 " + pending.length + " 张需确认" : "")); }
+    if (pending.length) finishPhotoMatch(pending);
+    flushCompress();
+  }
+  function finishPhotoMatch(pending) {
+    var dupBlocks = pending.filter(function (p) { return p.ep; });
+    var ambBlocks = pending.filter(function (p) { return !p.ep; });
+    var html = "";
+    if (dupBlocks.length) {
+      html += '<div style="font-weight:600;margin:6px 0;color:#9c4a3c">发现重复照片（内容相同），请选择覆盖或跳过：</div>';
+      dupBlocks.forEach(function (p, i) {
+        html += '<div class="ci-row"><img src="' + esc(p.ep.file ? (window.Android.readPhoto(p.ep.file) || "") : "") + '"><div class="ct"><b>' + esc(p.b.name) + '</b><br>已有相同照片，是否覆盖？</div>' +
+          '<div style="margin-left:auto;display:flex;gap:6px"><button class="btn-confirm2" style="padding:6px 10px;border:none;border-radius:6px;color:#fff" onclick="dupOverwrite(' + i + ')">覆盖</button>' +
+          '<button class="btn-cancel2" style="padding:6px 10px;border:none;border-radius:6px;color:#fff" onclick="dupSkip(' + i + ')">跳过</button></div></div>';
+      });
+    }
+    if (ambBlocks.length) {
+      html += '<div style="font-weight:600;margin:10px 0 4px;color:#6b2e2e">以下照片需确认归属（已默认勾选最匹配项，可直接点「确认」）：</div>';
+      ambBlocks.forEach(function (p, i) {
+        var opts = p.candidates.length ? p.candidates.map(function (m, mi) {
+          var checked = mi === 0 ? " checked" : "";
+          var hl = mi === 0 ? "background:#f7f1e8;border-radius:6px;" : "";
+          return '<label style="display:block;padding:4px 4px;' + hl + '"><input type="radio" name="amb' + i + '" value="' + esc(m.b.id) + '"' + checked + '> ' + esc(m.b.name) + '（' + esc(m.b.city) + '） <span style="color:#b8862f">' + confLabel(m.s) + "</span></label>";
+        }).join("") : '<div style="margin:4px 0"><select class="umbSel" data-i="' + i + '" style="width:100%;padding:5px;border:1px solid var(--border);border-radius:6px"><option value="">— 选择古建绑定（可选）—</option>' + HERITAGE.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name) + '（' + esc(b.city || "") + '）</option>'; }).join("") + '</select></div>';
+        var scopeTip = p.scopeLabel ? '<div style="font-size:12px;color:#8a7c70;margin-bottom:3px">推断范围：' + esc(p.scopeLabel) + "</div>" : "";
+        html += '<div class="sel-box" data-ai="' + i + '"><div style="font-size:13px;margin-bottom:4px">📷 ' + esc(p.it.fname) + (p.it.folder ? '（' + esc(p.it.folder) + '）' : '') + "</div>" + scopeTip + opts +
+          '<label style="display:block;padding:3px 4px;color:#888"><input type="radio" name="amb' + i + '" value=""> 跳过此照片</label></div>';
+      });
+      html += '<div class="sel-actions">' +
+        '<button class="btn-all" onclick="ambSelectAll()">全选第一个</button>' +
+        '<button class="btn-clear" onclick="ambClearAll()">全部清除</button>' +
+        '<button class="btn-cancel2" onclick="ambCancel()">取消</button>' +
+        '<button class="btn-confirm2" onclick="confirmAmbiguous()">确认</button>' +
+        '<button class="btn-exit" onclick="closeSheet(\'sheetGen\')">退出</button></div>';
+    }
+    if (!html) { html = '<p style="color:#888">无待确认项。</p>'; flushCompress(); }
+    $("genTitle").textContent = "匹配确认";
+    $("genBody").innerHTML = html;
+    window.__ambBlocks = ambBlocks; window.__dupBlocks = dupBlocks;
+    openSheet("sheetGen");
+  }
+  // 仅在所有手动匹配框（重复/多选）处理完后才清理解压临时目录；源文件在手动绑定时必须还在（坑#22 同源）。
+  function maybeCleanInbox() {
+    if (window.Android && typeof window.Android.cleanInbox === "function") { try { window.Android.cleanInbox(); } catch (e) {} }
+  }
+  window.dupOverwrite = function (i) { var p = window.__dupBlocks[i]; try { if (p.ep.file && window.Android.deletePhoto) window.Android.deletePhoto(p.ep.file); } catch (e) {} p.b.photos = p.b.photos.filter(function (x) { return x !== p.ep; }); linkOrBase64(p.b, p.it); window.__dupBlocks.splice(i, 1); finishPhotoMatch(window.__dupBlocks.concat(window.__ambBlocks)); };
+  window.dupSkip = function (i) { window.__dupBlocks.splice(i, 1); if (!window.__dupBlocks.length && !window.__ambBlocks.length) maybeCleanInbox(); finishPhotoMatch(window.__dupBlocks.concat(window.__ambBlocks)); };
+  window.ambSelectAll = function () { window.__ambBlocks.forEach(function (p, i) { var f = p.candidates[0]; if (f) { var r = document.querySelector('input[name="amb' + i + '"][value="' + CSS_escape_fix(f.b.id) + '"]'); if (r) r.checked = true; } }); };
+  window.ambClearAll = function () { document.querySelectorAll('#genBody input[type="radio"]').forEach(function (r) { r.checked = false; }); };
+  window.ambCancel = function () { toast("已取消，未保存的匹配"); maybeCleanInbox(); closeSheet("sheetGen"); };
+  window.confirmAmbiguous = function () {
+    var saved = 0, failed = 0;
+    window.__ambBlocks.forEach(function (p, i) {
+      var r = document.querySelector('input[name="amb' + i + '"]:checked');
+      var bid = (r && r.value) ? r.value : "";
+      if (!bid) { var sel = document.querySelector('.umbSel[data-i="' + i + '"]'); if (sel) bid = sel.value; }
+      if (!bid) return;
+      var b = HERITAGE.find(function (x) { return x.id === bid; }); if (!b) return;
+      var ok = linkOrBase64(b, p.it); if (ok) saved++; else failed++;
+    });
+    render(); save();
+    if (!window.__dupBlocks.length && !window.__ambBlocks.length) maybeCleanInbox();
+    flushCompress();
+    toast("已保存 " + saved + " 张匹配照片" + (failed ? "（" + failed + " 张失败）" : "")); closeSheet("sheetGen");
+  };
+  function CSS_escape_fix(s) { return String(s).replace(/"/g, '\\"'); }
+
+  // ---------- 删除二级菜单（v3.12 同源：按时间/省过滤，全选/清除/确认，不可逆提示）----------
+  function deleteImportedPhotos() {
+    var provs = uniq(HERITAGE.map(function (b) { return b.province || ""; })).filter(Boolean);
+    var html = '<p style="font-size:13px;color:#555">删除“添加的照片”（按导入时间/省过滤；导入照片带 added 时间戳）。</p>';
+    html += '<div class="filter-sec"><h4>导入时间</h4><div class="chips" id="dpTime">' +
+      [["all", "全部"], ["7", "近7天"], ["30", "近30天"], ["90", "近90天"]].map(function (o) { return '<span class="chip' + (o[0] === "all" ? " on" : "") + '" data-k="dpTime" data-v="' + o[0] + '">' + o[1] + '</span>'; }).join("") + '</div></div>';
+    html += '<div class="filter-sec"><h4>省/直辖市（不选=全部）</h4><div class="chips" id="dpProv">' +
+      provs.map(function (o) { return '<span class="chip" data-k="dpProv" data-v="' + esc(o) + '">' + esc(o) + '</span>'; }).join("") + '</div></div>';
+    html += '<div id="dpList" style="margin-top:10px"></div>';
+    html += '<div class="sel-actions"><button class="btn-all" onclick="dpSelAll()">全选</button><button class="btn-clear" onclick="dpClearAll()">全部清除</button><button class="btn-cancel2" onclick="closeSheet(\'sheetGen\')">取消</button><button class="btn-confirm2" onclick="confirmDeletePhotos()">确认删除</button></div>';
+    $("genTitle").textContent = "删除添加的照片";
+    $("genBody").innerHTML = html;
+    window.__dpTime = "all"; window.__dpProv = new Set();
+    renderDpList();
+    $("dpTime").querySelectorAll(".chip").forEach(function (c) { c.onclick = function () { window.__dpTime = c.dataset.v; $("dpTime").querySelectorAll(".chip").forEach(function (x) { x.classList.toggle("on", x === c); }); renderDpList(); }; });
+    $("dpProv").querySelectorAll(".chip").forEach(function (c) { c.onclick = function () { if (window.__dpProv.has(c.dataset.v)) window.__dpProv.delete(c.dataset.v); else window.__dpProv.add(c.dataset.v); c.classList.toggle("on"); renderDpList(); }; });
+    openSheet("sheetGen");
+  }
+  function renderDpList() {
+    var now = Date.now(), cut = window.__dpTime === "all" ? 0 : now - (+window.__dpTime) * 86400000;
+    var rows = [];
+    HERITAGE.forEach(function (d) {
+      (d.photos || []).forEach(function (p) {
+        if (!p.added) return;
+        if (cut && p.added < cut) return;
+        if (window.__dpProv.size && !window.__dpProv.has(d.province || "")) return;
+        rows.push({ did: d.id, p: p, name: d.name, cap: p.caption || "照片" });
+      });
+    });
+    var box = $("dpList"); if (!box) return;
+    if (!rows.length) { box.innerHTML = '<p style="color:#888;font-size:12px">没有符合条件的导入照片。</p>'; return; }
+    box.innerHTML = rows.map(function (r, i) { return '<label class="sel-item" style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px"><input type="checkbox" class="dpChk" data-i="' + i + '" checked> ' + esc(r.name) + ' / ' + esc(r.cap) + '</label>'; }).join("");
+    window.__dpRows = rows;
+  }
+  window.dpSelAll = function () { document.querySelectorAll(".dpChk").forEach(function (c) { c.checked = true; }); };
+  window.dpClearAll = function () { document.querySelectorAll(".dpChk").forEach(function (c) { c.checked = false; }); };
+  window.confirmDeletePhotos = function () {
+    var rows = window.__dpRows || []; if (!rows.length) return;
+    var sel = {}; document.querySelectorAll(".dpChk").forEach(function (c) { if (c.checked) sel[+c.dataset.i] = true; });
+    var n = 0;
+    rows.forEach(function (r, i) {
+      if (!sel[i]) return;
+      var d = HERITAGE.find(function (x) { return x.id === r.did; }); if (!d) return;
+      try { if (r.p.file && window.Android && window.Android.deletePhoto) window.Android.deletePhoto(r.p.file); } catch (e) {}
+      d.photos = (d.photos || []).filter(function (x) { return x !== r.p; }); n++;
+    });
+    render(); save(); closeSheet("sheetGen");
+    toast("已删除 " + n + " 张导入照片");
+  };
+  function deleteHeritage() {
+    var provs = uniq(HERITAGE.map(function (b) { return b.province || ""; })).filter(Boolean);
+    var html = '<p style="color:#c0392b;font-weight:600">⚠ 删除后古建及其照片不可恢复</p>';
+    html += '<div class="filter-sec"><h4>省/直辖市（不选=全部）</h4><div class="chips" id="ddProv">' + provs.map(function (o) { return '<span class="chip" data-v="' + esc(o) + '">' + esc(o) + '</span>'; }).join("") + '</div></div>';
+    html += '<div id="ddList" style="margin-top:10px"></div>';
+    html += '<div class="sel-actions"><button class="btn-all" onclick="ddSelAll()">全选</button><button class="btn-clear" onclick="ddClearAll()">全部清除</button><button class="btn-cancel2" onclick="closeSheet(\'sheetGen\')">取消</button><button class="btn-confirm2" onclick="confirmDeleteHeritage()">确认删除</button></div>';
+    $("genTitle").textContent = "删除古建";
+    $("genBody").innerHTML = html;
+    window.__ddProv = new Set();
+    renderDdList();
+    $("ddProv").querySelectorAll(".chip").forEach(function (c) { c.onclick = function () { if (window.__ddProv.has(c.dataset.v)) window.__ddProv.delete(c.dataset.v); else window.__ddProv.add(c.dataset.v); c.classList.toggle("on"); renderDdList(); }; });
+    openSheet("sheetGen");
+  }
+  function renderDdList() {
+    var rows = HERITAGE.filter(function (d) { return !window.__ddProv.size || window.__ddProv.has(d.province || ""); }).map(function (d) { return { d: d, name: d.name, prov: d.province || "", np: (d.photos || []).length }; });
+    var box = $("ddList"); if (!box) return;
+    if (!rows.length) { box.innerHTML = '<p style="color:#888;font-size:12px">没有符合条件的古建。</p>'; return; }
+    box.innerHTML = rows.map(function (r, i) { return '<label class="sel-item" style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px"><input type="checkbox" class="ddChk" data-i="' + i + '" checked> ' + esc(r.name) + ' <span style="color:#888;font-size:11px">(' + esc(r.prov) + ' · ' + r.np + '张照片)</span></label>'; }).join("");
+    window.__ddRows = rows;
+  }
+  window.ddSelAll = function () { document.querySelectorAll(".ddChk").forEach(function (c) { c.checked = true; }); };
+  window.ddClearAll = function () { document.querySelectorAll(".ddChk").forEach(function (c) { c.checked = false; }); };
+  window.confirmDeleteHeritage = function () {
+    var rows = window.__ddRows || []; if (!rows.length) return;
+    ask("批量删除", "将永久删除 " + rows.length + " 个古建及共 " + rows.reduce(function (s, r) { return s + r.np; }, 0) + " 张照片，不可恢复，确认？",
+      [{ t: "取消", cls: "btn-cancel", v: 0 }, { t: "确认删除", cls: "btn-confirm2", v: 1 }], function (v) {
+        if (!v) return;
+        var sel = {}; document.querySelectorAll(".ddChk").forEach(function (c) { if (c.checked) sel[+c.dataset.i] = true; });
+        var n = 0;
+        rows.forEach(function (r, i) {
+          if (!sel[i]) return;
+          (r.d.photos || []).forEach(function (p) { try { if (p.file && window.Android && window.Android.deletePhoto) window.Android.deletePhoto(p.file); } catch (e) {} });
+          HERITAGE = HERITAGE.filter(function (x) { return x !== r.d; }); n++;
+        });
+        render(); save(); closeSheet("sheetGen");
+        toast("已删除 " + n + " 个古建");
+      });
+  };
+
+  /* ---------- 导出古建表格（CSV）---------- */
+  function exportTable() {
+    var rows = [["名称", "省", "市", "类别", "年代", "级别", "经度", "纬度", "介绍", "特点", "打卡次数", "照片数"]];
+    HERITAGE.forEach(function (b) {
+      rows.push([b.name, b.province, b.city, b.type, b.dynasty, b.level, b.lon, b.lat, b.intro, b.features, (b.checkins || []).length, (b.photos || []).length]);
+    });
+    var csv = "﻿" + rows.map(function (r) { return r.map(function (c) { return '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"'; }).join(","); }).join("\n");
+    var name = "古建景点_" + getTodayStr() + ".csv";
+    if (window.Android && typeof window.Android.saveBlob === "function") {
+      window.Android.saveBlob("data:text/csv;charset=utf-8;base64," + b64(csv), name);
+      toast("已导出：" + name);
+    } else {
+      var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+      toast("已导出：" + name);
+    }
+  }
+  function b64(s) { try { return btoa(unescape(encodeURIComponent(s))); } catch (e) { return ""; } }
+
+  /* ---------- 导出数据 JSON ---------- */
+  function exportJson() {
+    var name = "古建数据_" + getTodayStr() + ".json";
+    var json = JSON.stringify(HERITAGE);
+    if (window.Android && typeof window.Android.saveBlob === "function") {
+      window.Android.saveBlob("data:application/json;base64," + b64(json), name); toast("已导出：" + name);
+    } else { var blob = new Blob([json], { type: "application/json" }); var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); toast("已导出：" + name); }
+  }
+
+  /* ============ 奥维 ovkmz 导入导出（移植水利一张图 v3.15 成功经验）============ */
+  /* 富解析（兼容奥维/GE/自导出）：照片按 <OvAttaItem> 引用精确绑定、ExtendedData/描述多格式、
+     文件夹取最后两级（省/市）、坐标校验、无坐标不写假 0,0。 */
+  function buildExportSpec() {
+    var root = {};
+    HERITAGE.forEach(function (d) {
+      if (d.geom !== "Point" || d.lon == null) return;
+      var o = d.province || "未设置", fn = d.city || (d.type || "其他");
+      root[o] = root[o] || {}; root[o][fn] = root[o][fn] || []; root[o][fn].push(d);
+    });
+    var photos = [];
+    function extOf(f) { var m = /\.([A-Za-z0-9]{2,5})$/.exec(String(f || "")); return m ? "." + m[1].toLowerCase() : ".jpg"; }
+    function dataEl(k, v) {
+      if (v == null || v === "") return "";
+      return '<Data name="' + esc(k) + '"><value>' + esc(v) + "</value></Data>";
+    }
+    function placemark(d) {
+      var desc = [["省份", d.province], ["城市", d.city], ["文物类别", d.type], ["年代", d.dynasty], ["级别", d.level]]
+        .filter(function (a) { return a[1]; })
+        .map(function (a) { return esc(a[0]) + " : " + esc(a[1]); }).join("|");
+      var atta = "";
+      (d.photos || []).forEach(function (p) {
+        var rel = (p.file && /^(photos\/|file:)/.test(p.file)) ? p.file : null;
+        if (!rel && p.data && p.data.indexOf("data:") === 0 && window.Android && window.Android.storePhoto) {
+          try { rel = window.Android.storePhoto(d.id, (p.caption || "photo.jpg"), p.data); } catch (e) {}
+        }
+        if (!rel) return;
+        var ovName = "pic_" + photos.length + (rel ? extOf(rel) : ".jpg");
+        photos.push({ relPath: rel, ovName: ovName });
+        atta += "<OvAttaItem>ovatta/" + ovName + "</OvAttaItem>";
+      });
+      var ext = dataEl("省份", d.province) + dataEl("城市", d.city) + dataEl("文物类别", d.type) +
+        dataEl("年代", d.dynasty) + dataEl("级别", d.level) + dataEl("介绍", d.intro) + dataEl("特点", d.features);
+      var geo = (d.lon != null && d.lat != null && !(d.lon === 0 && d.lat === 0))
+        ? "<Point><coordinates>" + d.lon + "," + d.lat + ",0</coordinates></Point>" : "";
+      return "<Placemark><name>" + esc(d.name) + "</name><description>" + desc + "</description>" +
+        (ext ? "<ExtendedData>" + ext + "</ExtendedData>" : "") +
+        "<OvAttr><OvIcon>1</OvIcon><OvIconNum>0</OvIconNum>" + (atta ? "<OvAttaList>" + atta + "</OvAttaList>" : "") + "</OvAttr>" +
+        geo + "</Placemark>";
+    }
+    var folders = "";
+    Object.keys(root).forEach(function (o) {
+      var sub = "";
+      Object.keys(root[o]).forEach(function (fn) {
+        sub += "<Folder><name>" + esc(fn) + "</name>" + root[o][fn].map(placemark).join("") + "</Folder>";
+      });
+      folders += "<Folder><name>" + esc(o) + "</name>" + sub + "</Folder>";
+    });
+    var kml = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>古建景点打卡</name>' + folders + "</Document></kml>";
+    return { kml: kml, photos: photos };
+  }
+  function exportOvkmz() {
+    if (!(window.Android && window.Android.exportKmz)) { exportOvkmzLegacy(); return; }
+    function doExport() {
+      busy("正在整理导出数据…");
+      busyDetail("正在组装 KML 与照片清单，请稍后…");
+      setTimeout(function () {
+        var spec;
+        try { spec = buildExportSpec(); }
+        catch (e) { idle(); toast("导出准备失败：" + e.message); return; }
+        idle();
+        ensureWifi("导出 ovkmz（可能 >3GB）", function () {
+          var outName = "古建景点_" + getTodayStr() + ".ovkmz";
+          var out = window.Android.exportPath(outName);
+          openXferProgress("export"); window.Android.exportKmz(JSON.stringify(spec), out, false);
+        });
+      }, 30);
+    }
+    if (XFER.source === "netdisk") {
+      ask("网盘导出", "当前传输设置为『网盘』，导出文件将上传到网盘（需填写 token）。确认？",
+        [{ t: "取消", cls: "btn-cancel", v: 0 }, { t: "确认上传", cls: "btn-confirm2", v: 1 }], function (v) { if (v) doExport(); });
+      return;
+    }
+    doExport();
+  }
+  function exportOvkmzLegacy() {
+    toast("正在生成 ovkmz…");
+    try {
+      var spec = buildExportSpec();
+      var zip = new JSZip();
+      zip.file("doc.kml", spec.kml);
+      var pending = spec.photos.filter(function (p) { return p.relPath; });
+      var todo = pending.length, done = 0;
+      function finish() {
+        zip.generateAsync({ type: "blob" }).then(function (blob) {
+          var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "古建景点_" + Date.now() + ".kmz"; a.click();
+          toast("已导出：" + a.download);
+        });
+      }
+      if (!todo) return finish();
+      pending.forEach(function (p) {
+        var data = (window.Android && window.Android.readPhoto) ? window.Android.readPhoto(p.relPath) : "";
+        if (data && data.indexOf("data:") === 0) {
+          fetch(data).then(function (r) { return r.blob(); }).then(function (b) { zip.file("ovatta/" + p.ovName, b); if (++done === todo) finish(); }).catch(function () { if (++done === todo) finish(); });
+        } else { if (++done === todo) finish(); }
+      });
+    } catch (e) { toast("生成失败：" + e.message); }
+  }
+  function importOvkmz() {
+    if (!(window.Android && window.Android.pickFiles)) { importOvkmzLegacy(); return; }
+    window.__pickMode = "kmz";
+    window.Android.pickFiles("*/*");
+  }
+  function importOvkmzLegacy() {
+    var inp = document.createElement("input"); inp.type = "file"; inp.accept = ".kmz,.ovkmz,.kml"; inp.onchange = function () {
+      var f = this.files[0]; if (!f) return;
+      JSZip.loadAsync(f).then(function (zip) {
+        var kmlFile = zip.file("doc.kml") || Object.keys(zip.files).map(function (k) { return zip.files[k]; }).filter(function (zf) { return /doc\.kml$/i.test(zf.name) && !zf.dir; })[0];
+        if (!kmlFile) throw new Error("kml 不存在");
+        return kmlFile.async("string").then(function (txt) {
+          var photoEntries = Object.keys(zip.files).filter(function (k) { return !zip.files[k].dir && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(k) && k.indexOf("ovatta/") === 0; });
+          return Promise.all(photoEntries.map(function (k) {
+            return zip.file(k).async("base64").then(function (b64d) {
+              return { ovName: k.split("/").pop(), data: "data:image/" + (/\.png$/i.test(k) ? "png" : "jpeg") + ";base64," + b64d };
+            });
+          })).then(function (photos) { mergeImported(parseKmzWithPhotos(txt, photos)); });
+        });
+      }).catch(function (e) { toast("导入失败：" + e); });
+    };
+    inp.click();
+  }
+  // 原生导入回调：kml + 照片路径映射 -> 合并（同名+坐标相同更新，否则新增）
+  window.onImportData = function (json) {
+    var o; try { o = JSON.parse(json); } catch (e) { toast("导入数据解析失败"); return; }
+    var added = parseKmzWithPhotos(o.kml, o.photos || []);
+    if (!added.length) { toast("未解析到古建"); return; }
+    mergeImported(added);
+  };
+  function mergeImported(added) {
+    var nAdd = 0, nUp = 0;
+    added.forEach(function (nb) {
+      var ex = HERITAGE.find(function (x) { return x.name === nb.name && x.lon != null && nb.lon != null && Math.abs(x.lat - nb.lat) < 1e-4 && Math.abs(x.lon - nb.lon) < 1e-4; });
+      if (ex) {
+        ex.province = nb.province; ex.city = nb.city; ex.type = nb.type; ex.dynasty = nb.dynasty;
+        ex.level = nb.level; ex.intro = nb.intro; ex.features = nb.features; ex.photos = nb.photos;
+        ex.geom = nb.geom; ex.lon = nb.lon; ex.lat = nb.lat; nUp++;
+      } else { HERITAGE.push(nb); nAdd++; }
+    });
+    save(); render();
+    if (window.idle) window.idle();
+    flushCompress();
+    toast("导入完成：新增 " + nAdd + "，更新 " + nUp);
+  }
+  /* ---------- KML 解析工具（命名空间容错 / 直接子节点 / 坐标校验）---------- */
+  function els(el, tag) {
+    if (!el) return [];
+    var r = el.getElementsByTagName(tag);
+    if (r && r.length) return r;
+    try { r = el.getElementsByTagNameNS("*", tag); } catch (e) { r = null; }
+    return r || [];
+  }
+  function dchild(el, tag) {
+    if (!el || !el.childNodes) return null;
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var c = el.childNodes[i];
+      if (c.nodeType !== 1) continue;
+      var ln = c.localName || c.nodeName;
+      if (ln === tag || c.nodeName === tag) return c;
+    }
+    return null;
+  }
+  function dtxt(el, tag) {
+    var c = dchild(el, tag);
+    return c && c.textContent ? c.textContent.trim() : "";
+  }
+  function parseCoords(s) {
+    if (!s) return [];
+    return s.trim().split(/\s+/).map(function (t) {
+      var p = t.split(",");
+      var lon = parseFloat(p[0]), lat = parseFloat(p[1]);
+      if (!isFinite(lon) || !isFinite(lat)) return null;
+      if (lon < -180 || lon > 180 || lat < -90 || lat > 90) return null;
+      if (lon === 0 && lat === 0) return null;   // 0,0 典型"无坐标"占位
+      return [lon, lat];
+    }).filter(Boolean);
+  }
+  function stripTags(s) {
+    return String(s == null ? "" : s).replace(/<[^>]*>/g, "")
+      .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').trim();
+  }
+  function parseDescAttrs(desc) {
+    if (!desc) return [];
+    var out = [];
+    if (/<\s*(table|tr|td|br|p|div)/i.test(desc)) {
+      var rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi, m;
+      while ((m = rowRe.exec(desc))) {
+        var tds = m[1].match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi) || [];
+        if (tds.length >= 2) { var k = stripTags(tds[0]), v = stripTags(tds[1]); if (k) out.push([k, v]); }
+      }
+      if (!out.length) {
+        desc.split(/<br\s*\/?>|<\/p>|<\/div>/i).forEach(function (line) {
+          var t = stripTags(line); if (!t) return;
+          var p = t.split(/[:：]/);
+          if (p.length >= 2 && p[0].trim()) out.push([p[0].trim(), p.slice(1).join(":").trim()]);
+        });
+      }
+      return out;
+    }
+    var parts = desc.indexOf("|") >= 0 ? desc.split("|") : desc.split(/\r?\n/);
+    parts.forEach(function (l) {
+      var p = l.split(/[:：]/);
+      if (p.length >= 2 && p[0].trim()) out.push([p[0].trim(), p.slice(1).join(":").trim()]);
+    });
+    return out;
+  }
+  var FIELD_ALIAS = {
+    province: ["省份", "省", "province"],
+    city: ["城市", "市", "city"],
+    type: ["文物类别", "类别", "类型", "文物类型", "type"],
+    dynasty: ["年代", "朝代", "dynasty"],
+    level: ["级别", "保护级别", "level"],
+    intro: ["介绍", "简介", "intro", "description"],
+    features: ["特点", "特色", "features"],
+    name: ["名称", "古建名称", "name"]
+  };
+  function matchField(key) {
+    var k = String(key || "").trim().toLowerCase();
+    for (var f in FIELD_ALIAS) {
+      for (var i = 0; i < FIELD_ALIAS[f].length; i++) {
+        if (FIELD_ALIAS[f][i].toLowerCase() === k) return f;
+      }
+    }
+    return "";
+  }
+  /* 富解析（兼容奥维/GE/自导出）：照片按 <OvAttaItem> 引用精确绑定、ExtendedData/描述多格式、
+     文件夹取最后两级（省/市）、坐标校验、无坐标不写假 0,0。v3.15 移植自水利一张图。 */
+  function parseKmzWithPhotos(xml, photos) {
+    photos = photos || [];
+    var out = [];
+    try {
+      var doc = new DOMParser().parseFromString(xml || "", "application/xml");
+      if (doc.getElementsByTagName("parsererror").length) { toast("KML 格式无法解析"); return out; }
+      var pms = doc.getElementsByTagName("Placemark");
+      if (!pms.length) pms = els(doc, "Placemark");
+      var byRef = {}, used = {}, seq = 0;
+      photos.forEach(function (p, i) {
+        if (!p) return;
+        var keys = [];
+        if (p.ovPath) keys.push(String(p.ovPath).replace(/\\/g, "/").toLowerCase());
+        if (p.ovName) keys.push(String(p.ovName).toLowerCase());
+        if (p.relPath) keys.push(String(p.relPath).split("/").pop().toLowerCase());
+        keys.forEach(function (k) { if (k && byRef[k] === undefined) byRef[k] = i; });
+      });
+      function takeByRef(ref) {
+        var r = String(ref || "").replace(/\\/g, "/").trim();
+        if (!r) return null;
+        var cands = [r.toLowerCase(), r.split("/").pop().toLowerCase()];
+        for (var i = 0; i < cands.length; i++) {
+          var idx = byRef[cands[i]];
+          if (idx !== undefined && !used[idx]) { used[idx] = 1; return photos[idx]; }
+        }
+        return null;
+      }
+      function takeNext() {
+        while (seq < photos.length && used[seq]) seq++;
+        if (seq >= photos.length) return null;
+        used[seq] = 1; return photos[seq++];
+      }
+      for (var pi = 0; pi < pms.length; pi++) {
+        var pm = pms[pi];
+        var name = dtxt(pm, "name");
+        var desc = dtxt(pm, "description");
+        var explicit = {};
+        var eds = els(pm, "Data");
+        for (var di = 0; di < eds.length; di++) {
+          var dk = eds[di].getAttribute("name") || dtxt(eds[di], "displayName");
+          var dv = dtxt(eds[di], "value");
+          if (!dk) continue;
+          var f = matchField(dk); if (f) explicit[f] = dv;
+        }
+        var sds = els(pm, "SimpleData");
+        for (var si = 0; si < sds.length; si++) {
+          var sk = sds[si].getAttribute("name");
+          var sv = sds[si].textContent ? sds[si].textContent.trim() : "";
+          if (!sk) continue;
+          var sf = matchField(sk); if (sf && !explicit[sf]) explicit[sf] = sv;
+        }
+        if (desc) {
+          var da = parseDescAttrs(desc);
+          da.forEach(function (a) { var f2 = matchField(a[0]); if (f2 && !explicit[f2]) explicit[f2] = a[1]; });
+        }
+        var path = "", par = pm.parentNode;
+        while (par && par.nodeType === 1) {
+          var pn = par.localName || par.nodeName;
+          if (pn === "kml") break;
+          if (pn === "Folder") { var fn = dtxt(par, "name"); if (fn) path = "/" + fn + path; }
+          par = par.parentNode;
+        }
+        var segs = path.split("/").filter(Boolean);
+        var province = "", city = "", type = "";
+        if (segs.length >= 2) {
+          province = segs[segs.length - 2];
+          var s = segs[segs.length - 1];
+          if (s.indexOf("--") >= 0) { city = s.split("--")[0]; type = s.split("--")[1]; }
+          else { city = s; }
+        } else if (segs.length === 1) { province = segs[0]; }
+        if (explicit.province) province = explicit.province;
+        if (explicit.city) city = explicit.city;
+        if (explicit.type) type = explicit.type;
+        if (explicit.name && !name) name = explicit.name;
+        var photosArr = [];
+        var atta = els(pm, "OvAttaItem");
+        for (var k = 0; k < atta.length; k++) {
+          var ref = atta[k].textContent ? atta[k].textContent.trim() : "";
+          if (!ref) ref = dtxt(atta[k], "OvAttaFile") || dtxt(atta[k], "name");
+          var ph = takeByRef(ref) || takeNext();
+          if (!ph) continue;
+          if (ph.relPath) { photosArr.push({ file: ph.relPath, caption: "" }); queueCompress(ph.relPath); }
+          else if (ph.data) photosArr.push({ data: ph.data, caption: "" });
+        }
+        var rec = {
+          id: "h" + Date.now() + "_" + out.length, name: name, province: province, city: city, type: type,
+          dynasty: explicit.dynasty || "", level: explicit.level || "", intro: explicit.intro || "", features: explicit.features || "",
+          photos: photosArr, checkins: [], geom: "Point", lon: null, lat: null
+        };
+        var pt = els(pm, "Point")[0];
+        if (pt) {
+          var c = parseCoords(dtxt(pt, "coordinates"))[0];
+          if (c) { rec.lon = c[0]; rec.lat = c[1]; } else { rec.geom = "None"; }
+        } else { rec.geom = "None"; }
+        if (!rec.name) rec.name = "未命名_" + (pi + 1);
+        out.push(rec);
+      }
+    } catch (e) { toast("解析 kml 出错"); }
+    return out;
+  }
+
+  /* ---------- 统计 / 帮助 / 变更 / 关于 ---------- */
+  function showStats() {
+    var provs = new Set(HERITAGE.map(function (b) { return b.province; })), cities = new Set(HERITAGE.map(function (b) { return b.city; }));
+    var types = {}, photos = 0, checkins = 0;
+    HERITAGE.forEach(function (b) { types[b.type || "其他"] = (types[b.type || "其他"] || 0) + 1; photos += (b.photos || []).length; checkins += (b.checkins || []).length; });
+    var typeHtml = Object.keys(types).sort(function (a, b) { return types[b] - types[a]; }).slice(0, 8).map(function (t) { return '<div class="lg"><span class="dot" style="background:' + colorForType(t) + '"></span>' + esc(t) + "：" + types[t] + " 处</div>"; }).join("");
+    var html = '<div class="stat-grid">' +
+      '<div class="stat-box"><div class="n">' + HERITAGE.length + '</div><div class="t">古建总数</div></div>' +
+      '<div class="stat-box"><div class="n">' + provs.size + '</div><div class="t">省级行政区</div></div>' +
+      '<div class="stat-box"><div class="n">' + cities.size + '</div><div class="t">城市</div></div>' +
+      '<div class="stat-box"><div class="n">' + photos + '</div><div class="t">照片</div></div>' +
+      '<div class="stat-box"><div class="n">' + checkins + '</div><div class="t">打卡次数</div></div>' +
+      '<div class="stat-box"><div class="n">' + Object.keys(types).length + '</div><div class="t">文物类别</div></div></div>' +
+      '<div style="margin-top:10px"><b style="color:#6b2e2e">类别分布</b>' + typeHtml + "</div>";
+    $("genTitle").textContent = "统计"; $("genBody").innerHTML = html; openSheet("sheetGen");
+  }
+  function showHelp() {
+    var html = '<p style="font-size:13px;line-height:1.7;color:#3a2e28">' +
+      "1. 顶栏 🔍查询 / 🔎筛选 为最高频操作，置顶显眼。<br>" +
+      "2. 菜单为「一级 + 二级」：查询/筛选置顶；<b>拍照打卡</b> / 数据管理 / 地图和位置 / 传输与共享 / 信息与帮助 分组（二级默认隐藏，点标题或 ＋ 展开）。<br>" +
+      "3. 每个页面底部都有「✕ 退出本页」，避免卡页。<br>" +
+      "4. <b>连按屏幕任意处三下</b>（含空白/地图）可呼出主菜单。<br>" +
+      "5. 添加古建：菜单「地图和位置 → 添加古建」，点地图放置；也可手动填写省/市/类别/年代/级别/介绍/特点。<br>" +
+      "6. 拍照打卡：菜单「拍照打卡 → 打卡」，选古建、拍照片、填到达时间/游览时长/体验，自动记入路线。<br>" +
+      "7. 我的打卡路线：按到达时间从新到旧排列，可一键定位。<br>" +
+      "8. 批量导入照片按文件名智能匹配古建（容错错字/漏字）。</p>";
+    $("genTitle").textContent = "帮助"; $("genBody").innerHTML = html; openSheet("sheetGen");
+  }
+  function openChangelog() {
+    var html = '<div class="changelog-ver"><span class="cv">1.8</span><span class="cd">2026-08-24</span></div>' +
+      '<ul class="changelog-list">' +
+      "<li>优化（卡顿 · 性能）：地图标记弹窗改为「延迟生成」——仅在点开某个古建时拼装弹窗 HTML，不再 render 时给全部 1032 个点预生成，平移/缩放更流畅</li>" +
+      "<li>优化（图标缓存）：水滴图标按颜色缓存复用（全国仅约 6 类色），render 不再每个点新建 SVG DivIcon，降低内存与重建耗时</li>" +
+      "<li>优化（WebView 渲染）：启用硬件加速图层 + HTTP 缓存复用，地图拖拽与瓦片加载更顺滑（龙芯 3A400 等低配机改善明显）</li>" +
+      "<li>未删任何已有功能/菜单；风格色彩字体与 1.7 一致</li></ul>" +
+      '<div class="changelog-ver"><span class="cv">1.3</span><span class="cd">2026-08-17</span></div>' +
+      '<ul class="changelog-list">' +
+      "<li>新增「导出数据(ovkmz/KML)」「导入数据(ovkmz/KML)」：与奥维/水利一张图双向兼容，照片随古建一起导出导入（移植水利一张图 v3.15）</li>" +
+      "<li>修复 ovkmz 导入照片按出现顺序盲配、附件数与 KML 引用数不一致时整批照片错位绑到别的古建：改为按 &lt;OvAttaItem&gt; 引用名精确绑定（byRef），全部 miss 才顺序兜底（水利一张图坑#23）</li>" +
+      "<li>修复奥维无扩展名附件导入时被静默丢弃：原生 isAttachmentEntry 改用 hasExt 判定，无扩展名的正经附件也纳入（坑#25）</li>" +
+      "<li>修复导出照片一律强制 .jpg、丢失原扩展名，导致与奥维/自导出互导时引用对不上：导出保留原扩展名，导入按引用名匹配（坑#26/#27）</li>" +
+      "<li>修复导入坐标脏数据（999,888 / 0,0）未校验、全图缩放到大洋中央：parseCoords 过滤越界与 0,0（坑#29）</li>" +
+      "<li>修复无坐标古建导出时仍写假 &lt;Point&gt;0,0,0&lt;/Point&gt;，在奥维标到海面：无坐标不再写几何（坑#28）</li>" +
+      "<li>修复长导入/导出无「执行中，请稍后」提示、用户误以为卡死：新增 #busyOverlay 等待遮罩并包裹导出/导入（坑#30）</li>" +
+      "<li>导出 KML 同时写 &lt;description&gt;（竖线串，奥维可读）与 &lt;ExtendedData&gt;（省份/城市/文物类别/年代/级别/介绍/特点，导回无损）</li>" +
+      "<li>未删任何已有功能/菜单；风格色彩字体与 1.2 一致</li></ul>" +
+      '<div class="changelog-ver"><span class="cv">1.2</span><span class="cd">2026-08-16</span></div>' +
+      '<ul class="changelog-list">' +
+      "<li>同步水利一张图 v3.10–v3.14 照片导入健壮性：未匹配照片现可在确认框「选择古建绑定」（不再只能跳过），整包未匹配也能落库</li>" +
+      "<li>修复导入后提前清理解压临时目录导致手动绑定失败的致命隐患（cleanInbox 仅在手动匹配全部处理完后执行，坑#22 同源）</li>" +
+      "<li>修复确认「假成功计数」：按 linkPhoto 实际返回值计数，落盘失败计入失败</li>" +
+      "<li>修复渲染大量高清照片易 OOM：网格/列表缩略图改走原生 thumbPhoto 降采样（≤512 边，坑#18 同源）</li>" +
+      "<li>绑定照片按「古建名 #顺序号」归档命名（caption 同步），便于核对来源</li>" +
+      "<li>筛选新增「照片状态」：全部 / 有照片 / 多张照片(≥3) / 无照片</li>" +
+      "<li>数据管理新增「删除添加的照片」（按时间+省过滤，全选/清除/确认）与「删除古建」（按省过滤，不可逆提示+二次确认）</li>" +
+      "<li>未删任何已有功能/菜单；风格色彩字体与 1.1 一致</li></ul>" +
+      '<div class="changelog-ver"><span class="cv">1.1</span><span class="cd">2026-08-15</span></div>' +
+      '<ul class="changelog-list">' +
+      "<li>天地图 Token 改为环境可替换：集中在 index.html 的 window.TIANDITU_TOKENS（浏览器端/服务器端），app.js 不再写死</li>" +
+      "<li>菜单智能排序：拍照打卡置为首组，其余分组不变，不删任何功能</li>" +
+      "<li>模糊匹配升级为智能匹配：确认弹层默认勾选最匹配项、标注置信度（高匹配/较可能/待确认）与推断范围（省/类别），一键确认</li>" +
+      "<li>风格统一：所有颜色由 :root CSS 变量驱动，顶栏/弹层头渐变与遮罩色统一，无写死色值</li>" +
+      "<li>查询/筛选保持顶栏最显眼；筛选确认仍 0 提示 / 1 定位 / 多跳首个</li></ul>" +
+      '<div class="changelog-ver"><span class="cv">1.0</span><span class="cd">2026-08-15</span></div>' +
+      '<ul class="changelog-list">' +
+      "<li>新建古建景点打卡 APP：以省/直辖市/自治区 → 城市 → 古建三级管理</li>" +
+      "<li>AI 智能检索预置 87 处全国著名古建（覆盖 34 个省级行政区），含名称/介绍/文物特点/位置</li>" +
+      "<li>用户可手动添加古建（点地图或填坐标），字段含省/市/类别/年代/级别/介绍/特点</li>" +
+      "<li>拍照打卡：照片 + 到达时间 + 游览时长 + 旅游体验；我的打卡路线按时间排列</li>" +
+      "<li>两级菜单（查询/筛选置顶）、全页退出、三击任意处呼出主菜单</li>" +
+      "<li>智能照片匹配导入、查询/筛选确认跳转（0 提示 / 1 定位 / 多跳首个）</li>" +
+      "<li>风格统一（CSS 变量驱动），详见《APP 风格色彩字体搭配》</li></ul>";
+    $("genTitle").textContent = "版本变更"; $("genBody").innerHTML = html; openSheet("sheetGen");
+  }
+  function showAbout() {
+    var html = '<div style="text-align:center;padding:14px 0"><div style="font-size:40px">🏯</div>' +
+      '<div style="font-size:18px;font-weight:700;color:#6b2e2e;margin-top:6px">古建景点打卡</div>' +
+      '<div style="font-size:12px;color:#8a7c70;margin-top:4px">版本 ' + APP_VERSION + " · " + APP_BUILD_DATE + "</div></div>" +
+      '<p style="font-size:13px;line-height:1.6;color:#3a2e28">本应用用于记录与打卡全国古建筑/文物景点，支持按省/市检索、地图定位、拍照打卡与路线回顾。离线可用（底图为天地图在线瓦片）。</p>' +
+      '<p style="font-size:12px;color:#8a7c70">作者：' + AUTHOR + "</p>";
+    $("genTitle").textContent = "关于"; $("genBody").innerHTML = html; openSheet("sheetGen");
+  }
+
+  /* ---------- 灯箱 / 长按照片 ---------- */
+  window.appLightbox = function (id, i) {
+    var b = HERITAGE.find(function (x) { return x.id === id; }); if (!b || !b.photos[i]) return;
+    window.__lb = { id: id, i: i };
+    $("lbImg").src = photoSrc(b.photos[i]);
+    $("lbCap").textContent = (b.photos[i].caption || b.name || "");
+    $("lightbox").classList.add("show");
+  };
+  $("lbX").onclick = function () { $("lightbox").classList.remove("show"); };
+  window.appPhotoAct = function (id, i) {
+    var b = HERITAGE.find(function (x) { return x.id === id; }); if (!b || !b.photos[i]) return;
+    window.__lb = { id: id, i: i }; renderPhotoAct();
+  };
+  function renderPhotoAct() {
+    if (!window.__lb) return;
+    var b = HERITAGE.find(function (x) { return x.id === window.__lb.id; }); if (!b) return;
+    var p = b.photos[window.__lb.i];
+    $("paImg").src = photoSrc(p);
+    $("paCap").textContent = (p.caption || b.name || "");
+    $("photoAct").classList.add("show");
+  }
+  function photoActSave() {
+    if (!window.__lb) return;
+    var b = HERITAGE.find(function (x) { return x.id === window.__lb.id; }); if (!b) return;
+    var p = b.photos[window.__lb.i];
+    var src = photoSrc(p); if (!src) { toast("无法保存"); return; }
+    if (window.Android && typeof window.Android.saveBlob === "function" && src.indexOf("data:") === 0) { window.Android.saveBlob(src, (b.name || "photo") + "_" + window.__lb.i + ".jpg"); toast("已保存图片"); }
+    else if (src.indexOf("data:") === 0) { var a = document.createElement("a"); a.href = src; a.download = (b.name || "photo") + ".jpg"; a.click(); toast("已保存图片"); }
+    else toast("该图片存于应用私有目录");
+  }
+  function photoActPrev() { if (!window.__lb) return; var b = HERITAGE.find(function (x) { return x.id === window.__lb.id; }); if (!b) return; window.__lb.i = (window.__lb.i - 1 + b.photos.length) % b.photos.length; renderPhotoAct(); }
+  function photoActNext() { if (!window.__lb) return; var b = HERITAGE.find(function (x) { return x.id === window.__lb.id; }); if (!b) return; window.__lb.i = (window.__lb.i + 1) % b.photos.length; renderPhotoAct(); }
+  window.photoActSave = photoActSave; window.photoActPrev = photoActPrev; window.photoActNext = photoActNext;
+  window.closePhotoAct = function () { $("photoAct").classList.remove("show"); };
+
+  /* ---------- 搜索框实时过滤 ---------- */
+  $("search").addEventListener("input", function () { filters.text = this.value.trim(); render(); });
+  $("search").addEventListener("keydown", function (e) { if (e.key === "Enter") { filters.text = this.value.trim(); render(); applyFilterAndJump(); } });
+  $("btnQuery").onclick = function () { filters.text = $("search").value.trim(); render(); applyFilterAndJump(); };
+  $("btnFilter").onclick = openFilter;
+  $("btnMenu").onclick = function () { if (addMode) { toggleAdd(); return; } if (measureMode) { toggleMeasure(); return; } if (coordPickMode) { coordPickMode = false; map._container.style.cursor = ""; $("btnMenu").textContent = "☰ 菜单"; return; } openSheet("sheetMenu"); };
+  // 关闭按钮（含 data-close 的无障碍）
+  document.querySelectorAll("[data-close]").forEach(function (x) { x.onclick = function () { closeSheet(x.getAttribute("data-close")); }; });
+  // 三击任意处呼出主菜单（弹层内不触发，避免卡页找不到主菜单）
+  var tapCount = 0, tapTimer = null;
+  document.addEventListener("click", function (e) {
+    if (e.target.closest(".sheet") || e.target.closest(".overlay")) return;
+    tapCount++; clearTimeout(tapTimer);
+    tapTimer = setTimeout(function () { tapCount = 0; }, 700);
+    if (tapCount >= 3) { tapCount = 0; if (addMode) toggleAdd(); else if (measureMode) toggleMeasure(); else if (coordPickMode) { coordPickMode = false; map._container.style.cursor = ""; $("btnMenu").textContent = "☰ 菜单"; } openSheet("sheetMenu"); }
+  });
+  // 首次进入提示三击快捷键
+  setTimeout(function () { var h = $("tripleHint"); if (h) { h.classList.add("show"); setTimeout(function () { h.classList.remove("show"); }, 4000); } }, 800);
+
+  /* ---------- 智能AI（设置 + 智能助手）初始化 ---------- */
+  function initAIModule() {
+    if (!window.AIModule) return;
+    window.AIModule.init({
+      domain: "gujian",
+      appName: "古建景点打卡",
+      allowOnlineQuery: true,
+      fieldSchema: ["province", "city", "type", "dynasty", "level", "intro", "features"],
+      getRecord: function (id) { return HERITAGE.find(function (x) { return x.id === id; }); },
+      searchRecords: function (q) {
+        q = (q || "").trim();
+        return HERITAGE.filter(function (b) { return !q || (b.name || "").indexOf(q) >= 0 || (b.city || "").indexOf(q) >= 0 || (b.province || "").indexOf(q) >= 0; });
+      },
+      listAll: function () { return HERITAGE; },
+      applyUpdate: function (rec, patch) {
+        ["province", "city", "type", "dynasty", "level", "intro", "features"].forEach(function (k) {
+          if (patch[k] != null && String(patch[k]).trim() !== "") rec[k] = patch[k];
+        });
+        save(); render();
+      }
+    });
+  }
+
+  /* ---------- 启动 ---------- */
+  load(); initMap(); initAIModule(); buildMenu(); render();
+})();

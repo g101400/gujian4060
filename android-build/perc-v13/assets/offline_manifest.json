@@ -1,0 +1,14 @@
+{
+  "source": "tianditu vec_w (CGCS2000)",
+  "bbox": [
+    116.28,
+    40.3,
+    117.03,
+    41.05
+  ],
+  "zmin": 8,
+  "zmax": 14,
+  "tiles": 2216,
+  "errors": 0,
+  "path": "offline_tiles/{z}/{x}/{y}.png"
+}

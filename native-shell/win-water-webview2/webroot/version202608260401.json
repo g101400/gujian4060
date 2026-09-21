@@ -1,0 +1,11 @@
+{
+  "app": "水利工程一张图",
+  "appName": "水利工程基础信息一张图",
+  "package": "com.shuili.yitu",
+  "version": "3.30.3",
+  "versionCode": 33,
+  "buildDate": "2026-08-24",
+  "author": "小七",
+  "recordCount": 557,
+  "desc": "水利工程基础信息一张图（离线 WebView）。v3.30.3：照片性能三件套——①筛选/查询高亮 marker 弹窗改懒构造（修复 500+ 建筑点「有照片/无照片」筛选卡死根因）；②显示改走持久化缩略图 ensureThumb(.thumbs 缓存，首次生成后永久复用，不再每次解码 7M 原图)；③导入压缩：>1.5M 大图导入时（zip 批量/ovkmz/单张添加/巡视）弹窗选压缩目标（200K/500K/1M/不压缩，默认 500K 建议），原生 4 并发压缩带进度条，只存压缩版（删除原图前明确提示）。v3.30.2：四端同步打包（版本号对齐 .2 系列）。v3.30：补齐 assets/leaflet（修复安装后中间空白 + Script error @0:0）。v3.29：独立包名 com.shuili.yitu（三应用可同装）、render() 改 marker 差异更新 + popup 懒构造（修复卡顿）、筛选激活时关闭视窗裁剪（修复蓝圈缺失）、含图无表 ZIP 引导转「批量导入照片」、xferOverlay z-index 提至 3000 + 解压进度回调、新增「运行维护」菜单（默认出发位置/运行维护计划/巡视检查/我的巡视路线）与巡视时长汇总、照片灯箱放大。本文件为版本唯一真相源：build_apk.sh 由此同步 AndroidManifest 的 versionCode/versionName，改版本号只需改此处。"
+}

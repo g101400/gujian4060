@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>古建景点打卡</title>
+<link rel="stylesheet" href="leaflet/leaflet.css" />
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg: #f3ece2; --surface: #ffffff; --primary: #6b2e2e; --primary-2: #9c4a3c;
+    --accent: #b8862f; --amber: #d98723; --danger: #c0392b;
+    --text: #3a2e28; --muted: #8a7c70; --border: #e7ddd0; --soft: #f7f1e8;
+  }
+  html, body { height: 100%; margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+  #app { display: flex; flex-direction: column; height: 100%; }
+  #topbar { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color:#fff; flex:0 0 auto; flex-wrap: nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+  #topbar h1 { font-size: 15px; margin:0; font-weight:600; white-space:nowrap; flex:0 0 auto; letter-spacing:.5px; }
+  #search { flex:1 1 120px; min-width: 80px; padding:8px 12px; border:none; border-radius:9px; font-size:14px; background: rgba(255,255,255,.95); color: var(--text); }
+  #search::placeholder { color:#b9a99a; }
+  #count { font-size:12px; opacity:.9; white-space:nowrap; flex:0 0 auto; background: rgba(255,255,255,.15); padding:4px 9px; border-radius:10px; }
+  .tbtn { background: rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:9px; padding:8px 12px; font-size:13px; cursor:pointer; flex:0 0 auto; transition: background .15s; }
+  .tbtn:active { background: rgba(255,255,255,.32); }
+  .tbtn.on { background: var(--amber); color:#fff; border-color: var(--amber); }
+  #map { flex:1 1 auto; background:#e7ddcf; }
+  .drop-pin { background: transparent; border:none; }
+  .drop-pin svg { display:block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+  .leaflet-popup-content { margin:12px 14px; min-width:230px; }
+  .popup-title { font-size:15px; font-weight:700; margin:0 0 6px; color: var(--primary); }
+  .badge { display:inline-block; background: var(--primary); color:#fff; font-size:11px; padding:2px 8px; border-radius:10px; margin:0 4px 6px 0; }
+  .badge.b2 { background: var(--accent); }
+  .badge.b3 { background: var(--primary-2); }
+  .param-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .param-table td { padding:5px 6px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .param-table td.k { color: var(--muted); white-space:nowrap; width:74px; }
+  .photos { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .photos img { width:84px; height:84px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer; }
+  .pop-actions { margin-top:10px; display:flex; gap:6px; }
+  .pop-actions button { flex:1; border:none; border-radius:7px; padding:8px; font-size:13px; cursor:pointer; color:#fff; }
+  .pop-edit { background: var(--primary-2); }
+  .pop-nav { background: var(--accent); }
+  .pop-del { background: var(--danger); }
+  .pop-detail { background:#6b46c1; }
+  .pop-close { background:#aab4be; color:#fff; border:none; border-radius:7px; padding:7px 18px; font-size:13px; cursor:pointer; margin-top:4px; }
+  .leaflet-popup a.leaflet-popup-close-button { font-size:20px !important; width:28px !important; height:28px !important; line-height:28px !important; color: var(--danger) !important; }
+
+  .overlay { position:fixed; inset:0; background:rgba(107,46,46,.45); z-index:2000; display:none; }
+  .mctrl-cluster { position:absolute; right:10px; top:50%; transform:translateY(-50%); z-index:1200; display:flex; flex-direction:column; gap:8px; }
+  .mctrl { width:40px; height:40px; border:none; border-radius:10px; background:#fff; color:var(--primary); font-size:20px; line-height:40px; text-align:center; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.25); }
+  .mctrl:active { background:var(--primary-2); color:#fff; }
+  .bm-row { display:flex; align-items:center; gap:8px; padding:8px 6px; border-bottom:1px solid var(--border); }
+  .overlay.show { display:flex; align-items:center; justify-content:center; }
+  .ask-card { background:#fff; border-radius:14px; padding:18px 18px 14px; width:84%; max-width:340px; box-shadow:0 8px 30px rgba(0,0,0,.3); }
+  .ask-title { font-size:16px; font-weight:700; color:var(--primary); margin-bottom:8px; }
+  .ask-msg { font-size:14px; color:#333; line-height:1.55; margin-bottom:14px; }
+  .ask-btns { display:flex; gap:10px; justify-content:flex-end; }
+  .ask-btns button { border:none; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; color:#fff; }
+  .btn-cancel { background:#aab4be; }
+  .btn-confirm2 { background:var(--primary-2); }
+  .overlay.show { display:block; }
+  .sheet { position:fixed; top:0; right:0; height:100%; width:84%; max-width:360px; background: var(--surface); z-index:2001; transform:translateX(100%); transition:transform .22s ease; display:flex; flex-direction:column; box-shadow:-4px 0 16px rgba(0,0,0,.22); overflow:hidden; }
+  .sheet.show { transform:translateX(0); }
+  .sheet-head { padding:15px 16px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color:#fff; font-size:16px; font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+  .sheet-head .x { cursor:pointer; font-size:22px; line-height:1; width:30px; height:30px; text-align:center; border-radius:50%; transition: background .15s; }
+  .sheet-head .x:active { background: rgba(255,255,255,.2); }
+  .sheet-body { padding:14px 16px; overflow:auto; flex:1; }
+  .menu-item { display:flex; align-items:center; gap:12px; padding:13px 8px; border-bottom:1px solid var(--soft); font-size:15px; cursor:pointer; color: var(--text); transition: background .12s; }
+  .menu-item:active { background: var(--soft); }
+  .menu-ico { font-size:18px; width:26px; text-align:center; flex:0 0 auto; }
+
+  label.f { display:block; margin:12px 0 5px; font-size:13px; color: var(--muted); font-weight:600; }
+  input.f, select.f, textarea.f { width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:14px; background:#fff; color: var(--text); }
+  input.f:focus, select.f:focus, textarea.f:focus { outline:none; border-color: var(--primary-2); box-shadow:0 0 0 2px rgba(156,74,60,.15); }
+  .kv-row { display:flex; gap:6px; margin:6px 0; }
+  .kv-row input { flex:1; padding:7px 9px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
+  .kv-row .delkv { background:#f3ece2; border:none; border-radius:6px; padding:0 10px; cursor:pointer; color: var(--muted); }
+  .photo-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .photo-card { position:relative; width:84px; }
+  .photo-card img { width:84px; height:84px; object-fit:cover; border-radius:6px; border:1px solid var(--border); }
+  .photo-card input { width:84px; font-size:11px; margin-top:2px; border:1px solid var(--border); border-radius:4px; padding:2px; }
+  .photo-card .rm { position:absolute; top:-6px; right:-6px; background: var(--danger); color:#fff; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:12px; line-height:1; }
+  .form-actions { display:flex; gap:8px; margin-top:18px; }
+  .form-actions button { flex:1; padding:12px; border:none; border-radius:9px; font-size:15px; cursor:pointer; color:#fff; font-weight:600; }
+  .btn-save { background: var(--accent); }
+  .btn-cancel { background:#aab4be; }
+  .btn-danger { background: var(--danger); }
+
+  #listView { display:none; flex:1; overflow:auto; padding:8px; -webkit-overflow-scrolling:touch; }
+  .list-card { background: var(--surface); border-radius:10px; padding:12px 14px; margin-bottom:8px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .list-card h3 { margin:0 0 4px; font-size:15px; color: var(--primary); }
+  .list-card .meta { font-size:12px; color: var(--muted); }
+  .list-card .go { float:right; color: var(--primary-2); font-size:13px; cursor:pointer; font-weight:600; }
+
+  #legend { position:absolute; left:8px; bottom:18px; background: rgba(255,255,255,.94); border-radius:10px; padding:9px 11px; font-size:11px; z-index:500; max-width:44%; box-shadow:0 2px 6px rgba(0,0,0,.18); }
+  #legend b { font-size:12px; color: var(--primary); }
+  #legend .lg { display:flex; align-items:center; gap:5px; margin-top:3px; }
+  #legend .dot { width:10px; height:10px; border-radius:50%; }
+
+  #toast { position:fixed; left:50%; bottom:74px; transform:translateX(-50%); background: rgba(107,46,46,.92); color:#fff; padding:10px 18px; border-radius:22px; font-size:13px; z-index:3000; opacity:0; transition:opacity .25s; pointer-events:none; max-width:82%; text-align:center; box-shadow:0 4px 12px rgba(0,0,0,.25); }
+  #toast.show { opacity:1; }
+
+  #lightbox { display:none; position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:4000; align-items:center; justify-content:center; flex-direction:column; }
+  #lightbox.show { display:flex; }
+  #lightbox img { max-width:92vw; max-height:80vh; border-radius:6px; }
+  #lightbox .cap { color:#fff; margin-top:10px; font-size:13px; }
+  #lightbox .x { position:absolute; top:14px; right:18px; color:#fff; font-size:30px; cursor:pointer; }
+
+  .base-switcher { position:absolute; right:9px; top:52px; z-index:600; background: rgba(255,255,255,.96); border-radius:12px; padding:10px 12px; font-size:13px; box-shadow:0 3px 10px rgba(0,0,0,.2); min-width:120px; }
+  .base-switcher .bs-title { font-weight:700; margin-bottom:6px; color: var(--primary); font-size:13px; }
+  .base-switcher .bs-opt { display:flex; align-items:center; gap:7px; cursor:pointer; padding:6px 4px; border-radius:7px; transition: background .12s; }
+  .base-switcher .bs-opt:active { background: var(--soft); }
+  .base-switcher .bs-opt input { accent-color: var(--primary); width:16px; height:16px; margin:0; }
+
+  .changelog-ver { display:flex; align-items:baseline; gap:10px; margin:16px 0 6px; }
+  .changelog-ver:first-child { margin-top:0; }
+  .changelog-ver .cv { background: var(--primary); color:#fff; font-size:13px; font-weight:700; padding:3px 10px; border-radius:8px; }
+  .changelog-ver .cd { font-size:12px; color: var(--muted); }
+  .changelog-list { margin:0 0 6px; padding-left:18px; }
+  .changelog-list li { font-size:13px; line-height:1.6; color: var(--text); margin-bottom:5px; }
+
+  .hint-add { position:absolute; top:56px; left:50%; transform:translateX(-50%); background: var(--amber); color:#fff; padding:8px 14px; border-radius:20px; font-size:13px; z-index:600; box-shadow:0 2px 6px rgba(0,0,0,.25); display:none; }
+  .hint-add.show { display:block; }
+  .hint-measure { position:absolute; top:56px; left:50%; transform:translateX(-50%); background: var(--primary); color:#fff; padding:8px 14px; border-radius:20px; font-size:13px; z-index:600; box-shadow:0 2px 6px rgba(0,0,0,.25); display:none; }
+  .hint-measure.show { display:block; }
+  .hint-measure button { background: var(--amber); color:#fff; border:none; border-radius:6px; padding:4px 12px; font-size:12px; cursor:pointer; margin-left:8px; }
+  .measure-tip { background: transparent; border: none; }
+  .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .stat-box { background: var(--soft); border-radius:10px; padding:12px; text-align:center; }
+  .stat-box .n { font-size:22px; font-weight:700; color: var(--primary); }
+  .stat-box .t { font-size:12px; color: var(--muted); }
+  .filter-sec { margin-bottom:14px; }
+  .filter-sec h4 { margin:0 0 8px; font-size:13px; color: var(--primary); font-weight:700; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { background:#fff; border:1px solid var(--border); border-radius:14px; padding:6px 12px; font-size:13px; cursor:pointer; color: var(--text); }
+  .chip.on { background: var(--primary); color:#fff; border-color: var(--primary); }
+
+  .tbtn.qf { background: var(--primary-2); border-color: var(--primary-2); font-weight:600; }
+
+  .menu-group { margin-bottom:6px; }
+  .menu-group-head { display:flex; align-items:center; gap:8px; padding:11px 10px; font-size:14px; font-weight:700; color: var(--primary); cursor:pointer; background: var(--soft); border-radius:9px; user-select:none; }
+  .menu-group-head .gh-ico { font-size:16px; }
+  .menu-group-head .plus { margin-left:auto; font-size:20px; line-height:1; transition: transform .2s; }
+  .menu-group:not(.collapsed) .plus { transform: rotate(45deg); }
+  .menu-group.collapsed .menu-group-body { display:none; }
+  .menu-item.sub { padding-left:24px; font-size:14px; }
+  .menu-top-item { display:flex; align-items:center; gap:12px; padding:12px 8px; border-bottom:1px solid var(--soft); font-size:15px; cursor:pointer; color: var(--primary); font-weight:600; }
+  .menu-top-item:active { background: var(--soft); }
+
+  .sel-box { border:1px solid var(--border); border-radius:8px; padding:6px 10px; margin-bottom:8px; max-height:42vh; overflow:auto; }
+  .sel-item { display:flex; align-items:center; gap:8px; padding:7px 0; font-size:13px; border-bottom:1px solid var(--soft); }
+  .sel-item img { width:52px; height:52px; object-fit:cover; border-radius:5px; border:1px solid var(--border); flex:0 0 auto; }
+  .sel-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .sel-actions button { flex:1 1 30%; min-width:78px; padding:10px 4px; border:none; border-radius:8px; font-size:13px; cursor:pointer; color:#fff; font-weight:600; }
+  .btn-all { background: var(--primary); }
+  .btn-clear { background:#7a8794; }
+  .btn-cancel2 { background:#aab4be; }
+  .btn-confirm2 { background: var(--accent); }
+  .btn-exit { background: var(--danger); }
+
+  .sheet-foot { padding:10px 16px; border-top:1px solid var(--soft); flex:0 0 auto; }
+  .sheet-foot button { width:100%; padding:11px; border:none; border-radius:9px; background:#aab4be; color:#fff; font-size:14px; cursor:pointer; font-weight:600; }
+
+  #photoAct { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:3px solid var(--primary); z-index:4500; padding:14px 16px; transform:translateY(100%); transition:transform .2s; box-shadow:0 -3px 12px rgba(0,0,0,.22); }
+  #photoAct.show { transform:translateY(0); }
+  #photoAct .pa-row { display:flex; align-items:center; gap:12px; }
+  #photoAct .pa-img { width:84px; height:84px; object-fit:cover; border-radius:6px; border:1px solid var(--border); flex:0 0 auto; }
+  #photoAct .pa-cap { font-size:13px; color: var(--text); }
+  #photoAct .pa-btns { display:flex; gap:6px; margin-top:12px; flex-wrap:wrap; }
+  #photoAct .pa-btns button { flex:1 1 22%; min-width:74px; padding:11px 4px; border:none; border-radius:9px; font-size:13px; cursor:pointer; color:#fff; font-weight:600; }
+
+  .trip-tap-hint { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:rgba(107,46,46,.9); color:#fff; padding:7px 14px; border-radius:18px; font-size:12px; z-index:2500; display:none; }
+  .trip-tap-hint.show { display:block; }
+
+  /* 打卡路线时间线 */
+  .route-item { background: var(--soft); border-radius:10px; padding:10px 12px; margin-bottom:8px; border-left:4px solid var(--accent); }
+  .route-item .rt { font-size:14px; font-weight:600; color: var(--primary); }
+  .route-item .rm { font-size:12px; color: var(--muted); margin-top:2px; }
+  .route-item .go { float:right; color: var(--primary-2); font-size:13px; cursor:pointer; font-weight:600; }
+  .empty-tip { color: var(--muted); font-size:13px; padding:20px; text-align:center; }
+  /* 打卡记录缩略 */
+  .ci-row { display:flex; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid var(--soft); }
+  .ci-row img { width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid var(--border); flex:0 0 auto; }
+  .ci-row .ct { font-size:13px; }
+  .ci-row .ct b { color: var(--primary); }
+  /* 等待遮罩（长操作请稍后提示，避免误以为卡死） */
+  #busyOverlay { position:fixed; left:0; right:0; top:0; bottom:0; background:rgba(40,30,26,.55); z-index:4000; display:none; align-items:center; justify-content:center; }
+  #busyOverlay.show { display:flex; }
+  .busy-box { background:#fff; border-radius:14px; padding:22px 28px; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,.3); max-width:80%; }
+  .busy-spin { width:40px; height:40px; border:4px solid var(--soft); border-top-color:var(--primary); border-radius:50%; margin:0 auto 12px; animation:busySpin .8s linear infinite; }
+  @keyframes busySpin { to { transform:rotate(360deg); } }
+  .busy-msg { font-size:15px; font-weight:600; color:var(--primary); }
+  .busy-sub { font-size:12px; color:var(--muted); margin-top:6px; }
+</style>
+<!-- 天地图 Token 配置：不同环境（开发/测试/生产、不同域名或包名）按需替换。
+     浏览器端 token 用于前端瓦片与注记请求（已随包发布，可绑定域名/包名）；
+     服务器端 token 仅供后端/服务端调用，切勿打入对外发布的客户端包，发布前请删除或改用后端代理。 -->
+<script>
+  window.TIANDITU_TOKENS = {
+    browser: "61691764ff68bf341c4c9c4770b24b5f",
+    server:  "d258e3622cb1755b59a59e4b7ac6d96e"
+  };
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <h1>古建景点打卡</h1>
+    <input id="search" placeholder="搜索名称/城市/类型…" />
+    <button class="tbtn qf" id="btnQuery">🔍 查询</button>
+    <button class="tbtn qf" id="btnFilter">🔎 筛选</button>
+    <button class="tbtn" id="btnMenu">☰ 菜单</button>
+    <span id="count"></span>
+  </div>
+  <div id="map"></div>
+  <div class="mctrl-cluster">
+    <button class="mctrl" id="btnBookmark" title="收藏窗口（记录当前视窗四角）">☆</button>
+    <button class="mctrl" id="btnGotoBookmark" title="放回收藏窗口">⌂</button>
+  </div>
+  <div id="listView"></div>
+</div>
+
+<div class="hint-add" id="hintAdd">点击地图放置新古建 ▸</div>
+<div class="hint-measure" id="hintMeasure">依次点击地图测距，双击结束 <button onclick="appFinishMeasure()">完成测距</button> <span style="margin-left:8px;cursor:pointer;font-size:18px;color:#fff" onclick="appFinishMeasure()">×</span></div>
+<div class="trip-tap-hint" id="tripleHint">连按三下任意处可呼出主菜单</div>
+
+<!-- 菜单抽屉 -->
+<div class="overlay" id="ovMenu"></div>
+<div class="sheet" id="sheetMenu">
+  <div class="sheet-head"><span>功能菜单</span><span class="x" data-close="sheetMenu">×</span></div>
+  <div class="sheet-body" id="menuBody"></div>
+</div>
+
+<!-- 通用弹层（筛选/关于/帮助/统计/导入导出说明/路线） -->
+<div class="overlay" id="ovGen"></div>
+<div class="sheet" id="sheetGen">
+  <div class="sheet-head"><span id="genTitle">标题</span><span class="x" data-close="sheetGen">×</span></div>
+  <div class="sheet-body" id="genBody"></div>
+</div>
+
+<!-- 编辑/新增 古建弹层 -->
+<div class="overlay" id="ovEdit"></div>
+<div class="sheet" id="sheetEdit">
+  <div class="sheet-head"><span id="editTitle">编辑古建</span><span class="x" data-close="sheetEdit">×</span></div>
+  <div class="sheet-body" id="editBody"></div>
+</div>
+
+<!-- 打卡弹层 -->
+<div class="overlay" id="ovCheckin"></div>
+<div class="sheet" id="sheetCheckin">
+  <div class="sheet-head"><span id="ciTitle">拍照打卡</span><span class="x" data-close="sheetCheckin">×</span></div>
+  <div class="sheet-body" id="ciBody"></div>
+</div>
+
+<!-- 灯箱 -->
+<div id="lightbox"><span class="x" id="lbX">×</span><img id="lbImg" /><div class="cap" id="lbCap"></div></div>
+
+<!-- 长按照片操作条（保存 / 上一张 / 下一张 / 退出） -->
+<div id="photoAct">
+  <div class="pa-row">
+    <img class="pa-img" id="paImg" />
+    <div class="pa-cap" id="paCap"></div>
+  </div>
+  <div class="pa-btns">
+    <button class="btn-save" onclick="photoActSave()">💾 保存图片</button>
+    <button class="btn-cancel" onclick="photoActPrev()">◀ 上一张</button>
+    <button class="btn-cancel" onclick="photoActNext()">下一张 ▶</button>
+    <button class="btn-danger" onclick="closePhotoAct()">✕ 退出</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div class="overlay" id="askBox">
+  <div class="ask-card">
+    <div class="ask-title">提示</div>
+    <div class="ask-msg"></div>
+    <div class="ask-btns"></div>
+  </div>
+</div>
+
+<script src="leaflet/leaflet.js"></script>
+<script src="jszip.min.js"></script>
+<script src="data.js"></script><script src="kb_building_seed.js"></script>
+<script src="ovobj_bridge.js"></script>
+<script src="ai_seed.js"></script>
+<script src="ai_module.js"></script>
+<script src="ctx_menu.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "app": "古建景点打卡",
+  "package": "com.gujian.travel",
+  "version": "1.8",
+  "versionCode": 9,
+  "buildDate": "2026-08-24",
+  "author": "小七",
+  "seedCount": 1032,
+  "provinces": 34,
+  "desc": "模仿水利工程一张图APP，古建景点打卡与旅游路线管理。v1.8：卡顿修复——弹窗延迟生成(bindPopup 传函数)、图标按色缓存(makeIcon _iconCache)、WebView LAYER_TYPE_HARDWARE + LOAD_DEFAULT 缓存；打卡路线照片改 appLightboxSrc 放大；帮助页补「智能对应」说明(打卡↔巡视检查)。v1.7：从水利回填「收藏窗口」(记录视窗四角/多收藏/放回/删除)，地图控件+菜单双入口；manifest versionCode 由 version.json 自动同步(防「版本更旧」安装失败)。v1.6：反向同步水利基座能力——离线自定义 ask() 对话框（替换全部 confirm()，修复离线静默失败）、视窗裁剪渲染（moveend/zoomend 防抖增量，仅建视窗内 marker，1032 点不卡顿）。v1.5：WebSearch 两轮生成全国代表性古建种子名录（17类），预置由87处扩至1032处，覆盖34省级行政区。本文件为版本唯一真相源：build_apk.sh 由此同步 AndroidManifest 的 versionCode/versionName。"
+}

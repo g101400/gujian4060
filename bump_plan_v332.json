@@ -1,0 +1,9 @@
+{
+  "date": "2026-08-27",
+  "date_c": "20260827",
+  "versions": {
+    "shuili": {"new": "3.32", "code": 35},
+    "perc":   {"new": "1.8",  "code": 14},
+    "gujian": {"new": "2.0",  "code": 14}
+  }
+}

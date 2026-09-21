@@ -1,0 +1,17 @@
+{
+  "app": "shuili",
+  "appName": "水利工程一张图",
+  "updatedAt": "2026-09-04",
+  "channels": {
+    "public": {
+      "version": "3.51",
+      "note": "新增运行维护备忘录模块；设置菜单新增升级数据导出/导入、软件升级检测",
+      "url": "https://pan.baidu.com/s/1v0ECWtD2bRl5TOsRXSESYg?pwd=a4np"
+    },
+    "internal": {
+      "version": "3.52",
+      "note": "内部版安装包不上公开网盘，请从单位内部渠道获取，或联系管理员",
+      "url": ""
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "app": "水利感知项目一张图",
+  "appName": "水利感知项目一张图",
+  "package": "com.shuili.ganzhi",
+  "version": "1.6",
+  "versionCode": 9,
+  "buildDate": "2026-08-24",
+  "author": "小七",
+  "recordCount": 1125,
+  "subsystems": ["视频监控", "雨水情监测", "大坝安全监测", "地下水源监测"],
+  "desc": "水利感知项目一张图（离线 WebView）。v1.6：移除内置离线瓦片（2216 张/15MB）改在线天地图，APK 由 11.5MB 降至约 308KB；菜单「添加建筑物」改「添加感知设施设备」并新增 所属系统/设备型号/固定资产编号/设备主要参数（多行）；恢复「照片（目录与命名）」菜单项。v1.5：独立包名 com.shuili.ganzhi、修正 Launcher category、移植水利 F1~F5+G1（运行维护菜单/默认出发位置/运行维护计划/巡视三项/巡视时长汇总/照片灯箱），localStorage 前缀 perc_ 防冲突。本文件为版本唯一真相源：build_apk.sh 由此同步 AndroidManifest 的 versionCode/versionName，改版本号只需改此处。"
+}

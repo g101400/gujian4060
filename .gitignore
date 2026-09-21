@@ -1,0 +1,108 @@
+# ============================================================
+# 安全红线：密钥 / 令牌 / keystore / 本地种子 永不入包、永不进仓库
+# （公开构建会剥离 ai_seed.js；拉取仓库时也绝不覆盖本地密钥）
+# ============================================================
+ai_seed*.js
+**/ai_seed*.js
+ai_seed.local.js
+secrets/
+**/secrets/
+config.local.js
+**/config.local.js
+SECRETS.md
+*.keystore
+**/*.keystore
+keystore/
+**/keystore/
+*.jks
+*.p12
+*.pem
+.env
+**/.env
+*.token
+
+# 密钥传播脚本 / 真实密钥备份（含真实 key，绝不入仓）
+.strip_backup/
+propagate_ai_seed*.py
+ai_seed*.js.real.bak
+*.real.bak
+
+# ============================================================
+# 构建产物（APK/deb/exe/msi/zip）单独排期，不进源码仓
+# ============================================================
+*.apk
+*.deb
+*.exe
+*.msi
+*.zip
+APK/
+APK归档/
+APK_*/
+_release_tmp/
+dist/
+build/targets/
+**/build/targets/
+apple-package/
+**/apple-package/
+webroot_stage/
+
+# ============================================================
+# 备份 / 快照（不进仓）
+# ============================================================
+backup_*/
+_backup_*/
+*_bak*/
+assets_bak*/
+.dbg_deb_xz/
+.dbg_deb/
+.pkgverify/
+
+# ============================================================
+# 依赖 / 缓存 / 大体积资源
+# ============================================================
+node_modules/
+__pycache__/
+*.pyc
+CMakeFiles/
+.venv/
+weights/
+*.bin
+
+# ============================================================
+# 本地工作区状态 / 智能体运行时（不进仓）
+# ============================================================
+.workbuddy/
+
+# ============================================================
+# 临时 / 测试 / 构建中间产物（不进仓）
+# ============================================================
+_or_test/
+_sim/
+_srvtest/
+**/.stash_*/
+_release_tmp/
+_phaseB_pre_patch_20260824_v347.zip
+CMakeCache.txt
+build.ninja
+build.ninja.tmp*
+CMakeFiles/
+
+# ============================================================
+# 与本三线四平台无关的独立项目 / 大型素材（单独管理，不进本仓）
+#   ai-lab(5.3GB 实验沙盒) / travel(1.3GB 古建打卡克隆) / jingyin(121MB 公众号小程序)
+# ============================================================
+ai-lab/
+travel/
+jingyin/
+weights_20260921_023535/
+native-shell/nsis_check/
+**/nsis_check/
+*.secrets/
+secrets.local.json
+*.gujian_token
+**/.gujian_token
+.secrets/
+**/.secrets/
+.sec_pass
+**/.sec_pass
+*.sec_pass

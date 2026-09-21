@@ -1,0 +1,11 @@
+{
+  "app": "古建景点打卡",
+  "package": "com.gujian.travel",
+  "version": "2.4",
+  "versionCode": 18,
+  "buildDate": "2026-08-28",
+  "author": "小七",
+  "seedCount": 1032,
+  "provinces": 34,
+  "desc": "模仿水利工程一张图APP，古建景点打卡与旅游路线管理。v2.4：问题修复与优化——①修复进入页面闪动（map 启动加 booting 守卫 + invalidateSize），及智能AI 联网查询「String contains non ISO-8859-1 code point」（HTTP 头中文转 ASCII）；②菜单顺序智能调整：关于/帮助移至末尾，删除古建/恢复初始数据归「设置」子菜单；③新增右键上下文菜单（地图/标注/列表：获取坐标、周边搜索、导航、智能补全、智能描述此地）；④更换 OpenRouter 密钥（openclaw626）三个免费模型 failover 实测；UOS deb 架构对照+ar 大小补齐回归保持。v2.3：智能AI 增强——内置三个 OpenRouter 免费模型预设（MiniMax M2.7 / GLM 5.2 / Nemotron 3 Nano Omni）、默认 failover 策略、本地 ai_seed.js 注入 Key、chatOne 头与 429/reasoning 兜底；联网智能查询/智能更新(补丁确认写入)/智能纠错(标注差异)保持；UOS deb 架构对照+ar 大小补齐回归保持。v2.2：新增「智能AI设置 + 智能AI」双菜单——自定义大模型（OpenRouter 默认、可本地模型）、多模型默认选择与自动调用策略、联网智能查询/智能更新(补丁确认写入)/智能纠错(标注差异)；四平台 webroot 同源同步；UOS deb 架构对照+ar 大小补齐回归保持。v2.1：与水利 v3.33 同步——UOS deb 架构对照+ar 大小补齐（根除「文件损坏」提示）；四平台 webroot 全量同步（样式/导出导入基线对齐）。版本同步至 2.0，与水利一张图 v3.32 同期发版，功能与样式对齐。v1.9：与水利 v3.31 同步——ovobj/obj 导入支持「单文件/整文件夹批量」选择并明示可选后缀；原生桥 escapeJson 补单引号转义根治 Script error @0:0；新增 pickFolder 目录递归枚举；古建与照片同时添加时表单文字实时回写不丢失；导出 zip 照片前先压缩；UOS DEB 架构对照修正（默认 mips64el，支持 ARCH= 覆盖）；四平台 webroot 全量同步。v1.8.3：照片性能三件套——显示走持久化缩略图缓存(ensureThumb)、>1.5M 大图导入时压缩（zip 批量/ovkmz/单张添加/打卡，默认 500K，只存压缩版并提示删除原图）。v1.8：卡顿修复——弹窗延迟生成(bindPopup 传函数)、图标按色缓存(makeIcon _iconCache)、WebView LAYER_TYPE_HARDWARE + LOAD_DEFAULT 缓存；打卡路线照片改 appLightboxSrc 放大；帮助页补「智能对应」说明(打卡↔巡视检查)。v1.7：从水利回填「收藏窗口」(记录视窗四角/多收藏/放回/删除)，地图控件+菜单双入口；manifest versionCode 由 version.json 自动同步(防「版本更旧」安装失败)。v1.6：反向同步水利基座能力——离线自定义 ask() 对话框（替换全部 confirm()，修复离线静默失败）、视窗裁剪渲染（moveend/zoomend 防抖增量，仅建视窗内 marker，1032 点不卡顿）。v1.5：WebSearch 两轮生成全国代表性古建种子名录（17类），预置由87处扩至1032处，覆盖34省级行政区。本文件为版本唯一真相源：build_apk.sh 由此同步 AndroidManifest 的 versionCode/versionName。"
+}

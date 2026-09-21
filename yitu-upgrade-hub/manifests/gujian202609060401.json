@@ -1,0 +1,12 @@
+{
+  "app": "gujian",
+  "appName": "古建景点打卡",
+  "updatedAt": "2026-09-04",
+  "channels": {
+    "single": {
+      "version": "3.7.1",
+      "note": "新增写游记/备忘录模块；设置菜单新增升级数据导出/导入、软件升级检测；AI 密钥内置",
+      "url": "https://pan.baidu.com/s/1v0ECWtD2bRl5TOsRXSESYg?pwd=a4np"
+    }
+  }
+}

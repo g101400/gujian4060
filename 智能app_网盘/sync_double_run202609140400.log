@@ -1,0 +1,489 @@
+===== 双同步开始 Thu Sep 10 17:41:25 CST 2026 =====
+--- 同步A：扫描本地归档 ---
+SKIP(非双通道归档): 四端安装包_20260820
+SKIP(非双通道归档): 四端安装包_20260821
+SKIP(非双通道归档): 四端安装包_20260823
+SKIP(非双通道归档): 四端安装包_20260824
+SKIP(非双通道归档): 四端安装包_20260824_v33
+SKIP(非双通道归档): 四端安装包_20260825_v331
+SKIP(非双通道归档): 四端安装包_20260827_v332
+SKIP(非双通道归档): 四端安装包_20260827_v333
+SKIP(非双通道归档): 四端安装包_20260828_fixed
+SKIP(非双通道归档): 四端安装包_20260828_v334
+SKIP(非双通道归档): 四端安装包_20260828_v335
+SKIP(非双通道归档): 四端安装包_20260828_v336
+SKIP(非双通道归档): 四端安装包_20260829_fixed
+SKIP(非双通道归档): 四端安装包_20260829_v341
+SKIP(非双通道归档): 四端安装包_20260830_v342
+SKIP(非双通道归档): 四端安装包_20260830_v343
+SKIP(非双通道归档): 四端安装包_20260830_v344
+SKIP(非双通道归档): 四端安装包_20260830_v345
+SKIP(非双通道归档): 四端安装包_20260831_v346
+[归档] 四端安装包_20260901_v348 → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.6/iOS/古建景点打卡_iOS_3.6_20260901_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.48/iOS/水利工程一张图_iOS_3.48_20260901_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.24/iOS/水利感知项目一张图_iOS_1.24_20260901_可托管.zip
+EXIST: 智能app/古建景点打卡/内部版/3.6/UOS/gujian-map_3.6.20260901_amd64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.6/UOS/gujian-map_3.6.20260901_arm64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.6/UOS/gujian-map_3.6.20260901_loongarch64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.6/UOS/gujian-map_3.6.20260901_mips64el.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.24/UOS/shuili-ganzhi_1.24.20260901_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.24/UOS/shuili-ganzhi_1.24.20260901_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.24/UOS/shuili-ganzhi_1.24.20260901_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.24/UOS/shuili-ganzhi_1.24.20260901_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.48/UOS/shuili-map_3.48.20260901_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.48/UOS/shuili-map_3.48.20260901_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.48/UOS/shuili-map_3.48.20260901_loongarch64.deb
+UPLOAD: 智能app/水利一张图/内部版/3.48/UOS/shuili-map_3.48.20260901_mips64el.deb
+EXIST: 智能app/古建景点打卡/内部版/3.6/Windows/古建景点打卡_Setup.exe
+EXIST: 智能app/古建景点打卡/内部版/3.6/Windows/古建景点打卡_Setup.msi
+EXIST: 智能app/水利一张图/内部版/3.48/Windows/水利工程基础信息一张图_Setup.exe
+EXIST: 智能app/水利一张图/内部版/3.48/Windows/水利工程基础信息一张图_Setup.msi
+EXIST: 智能app/水利感知项目一张图/内部版/1.24/Windows/水利感知项目一张图_Setup.exe
+EXIST: 智能app/水利感知项目一张图/内部版/1.24/Windows/水利感知项目一张图_Setup.msi
+EXIST: 智能app/古建景点打卡/内部版/3.6/Android/古建景点打卡V3.6_20260901_5090.apk
+EXIST: 智能app/水利一张图/内部版/3.48/Android/水利工程一张图V3.48_20260901_5090.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.24/Android/水利感知项目一张图V1.24_20260901_5090.apk
+SKIP(非双通道归档): 四端安装包_20260901_v348_智能查询
+SKIP(非双通道归档): 四端安装包_20260902_v349
+[归档] 四端安装包_20260903_v349_pub → 通道=公开版
+  ✓ 门禁 PASS
+EXIST: 智能app/古建景点打卡/公开版/3.7/Android/古建景点打卡V3.7_20260902_5090.apk
+EXIST: 智能app/水利一张图/公开版/3.49/Android/水利工程一张图V3.49_20260903.apk
+EXIST: 智能app/水利感知项目一张图/公开版/1.25/Android/水利感知项目一张图V1.25_20260903.apk
+EXIST: 智能app/古建景点打卡/公开版/3.7/iOS/古建景点打卡_iOS_3.7_20260902_可托管.zip
+EXIST: 智能app/水利一张图/公开版/3.49/iOS/水利工程一张图_iOS_3.49_20260903_可托管.zip
+EXIST: 智能app/水利感知项目一张图/公开版/1.25/iOS/水利感知项目一张图_iOS_1.25_20260903_可托管.zip
+EXIST: 智能app/古建景点打卡/公开版/3.7/UOS/gujian-map_3.7.20260902_amd64.deb
+EXIST: 智能app/古建景点打卡/公开版/3.7/UOS/gujian-map_3.7.20260902_arm64.deb
+EXIST: 智能app/古建景点打卡/公开版/3.7/UOS/gujian-map_3.7.20260902_loongarch64.deb
+EXIST: 智能app/古建景点打卡/公开版/3.7/UOS/gujian-map_3.7.20260902_mips64el.deb
+EXIST: 智能app/水利感知项目一张图/公开版/1.25/UOS/shuili-ganzhi_1.25.20260903_amd64.deb
+EXIST: 智能app/水利感知项目一张图/公开版/1.25/UOS/shuili-ganzhi_1.25.20260903_arm64.deb
+EXIST: 智能app/水利感知项目一张图/公开版/1.25/UOS/shuili-ganzhi_1.25.20260903_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/公开版/1.25/UOS/shuili-ganzhi_1.25.20260903_mips64el.deb
+EXIST: 智能app/水利一张图/公开版/3.49/UOS/shuili-map_3.49.20260903_amd64.deb
+EXIST: 智能app/水利一张图/公开版/3.49/UOS/shuili-map_3.49.20260903_arm64.deb
+EXIST: 智能app/水利一张图/公开版/3.49/UOS/shuili-map_3.49.20260903_loongarch64.deb
+EXIST: 智能app/水利一张图/公开版/3.49/UOS/shuili-map_3.49.20260903_mips64el.deb
+EXIST: 智能app/古建景点打卡/公开版/3.7/Windows/古建景点打卡_Setup.exe
+EXIST: 智能app/古建景点打卡/公开版/3.7/Windows/古建景点打卡_Setup.msi
+EXIST: 智能app/水利一张图/公开版/3.49/Windows/水利工程基础信息一张图_Setup.exe
+EXIST: 智能app/水利一张图/公开版/3.49/Windows/水利工程基础信息一张图_Setup.msi
+EXIST: 智能app/水利感知项目一张图/公开版/1.25/Windows/水利感知项目一张图_Setup.exe
+EXIST: 智能app/水利感知项目一张图/公开版/1.25/Windows/水利感知项目一张图_Setup.msi
+[归档] 四端安装包_20260903_v350_int → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7_20260902_5090.apk
+EXIST: 智能app/水利一张图/内部版/3.50/Android/水利工程一张图V3.50_20260903.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.26/Android/水利感知项目一张图V1.26_20260903.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7_20260902_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.50/iOS/水利工程一张图_iOS_3.50_20260903_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.26/iOS/水利感知项目一张图_iOS_1.26_20260903_可托管.zip
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.20260902_amd64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.20260902_arm64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.20260902_loongarch64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.20260902_mips64el.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.26/UOS/shuili-ganzhi_1.26.20260903_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.26/UOS/shuili-ganzhi_1.26.20260903_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.26/UOS/shuili-ganzhi_1.26.20260903_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.26/UOS/shuili-ganzhi_1.26.20260903_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.50/UOS/shuili-map_3.50.20260903_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.50/UOS/shuili-map_3.50.20260903_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.50/UOS/shuili-map_3.50.20260903_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.50/UOS/shuili-map_3.50.20260903_mips64el.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.exe
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.msi
+EXIST: 智能app/水利一张图/内部版/3.50/Windows/水利工程基础信息一张图_Setup.exe
+EXIST: 智能app/水利一张图/内部版/3.50/Windows/水利工程基础信息一张图_Setup.msi
+EXIST: 智能app/水利感知项目一张图/内部版/1.26/Windows/水利感知项目一张图_Setup.exe
+EXIST: 智能app/水利感知项目一张图/内部版/1.26/Windows/水利感知项目一张图_Setup.msi
+[归档] 四端安装包_20260905_v355_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v355_pub（不得上传泄漏版，请先重新置空密钥）
+SKIP(非双通道归档): 四端安装包_20260905_v355_pub_oldurl_废弃
+[归档] 四端安装包_20260905_v356_int → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7.3_20260905.apk
+EXIST: 智能app/水利一张图/内部版/3.56/Android/水利工程一张图V3.56_20260905.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.32/Android/水利感知项目一张图V1.32_20260905.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.3_20260905_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.56/iOS/水利工程一张图_iOS_3.56_20260905_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.32/iOS/水利感知项目一张图_iOS_1.32_20260905_可托管.zip
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.3.20260905_amd64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.3.20260905_arm64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.3.20260905_loongarch64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.3.20260905_mips64el.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.32/UOS/shuili-ganzhi_1.32.20260905_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.32/UOS/shuili-ganzhi_1.32.20260905_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.32/UOS/shuili-ganzhi_1.32.20260905_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.32/UOS/shuili-ganzhi_1.32.20260905_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.56/UOS/shuili-map_3.56.20260905_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.56/UOS/shuili-map_3.56.20260905_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.56/UOS/shuili-map_3.56.20260905_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.56/UOS/shuili-map_3.56.20260905_mips64el.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.exe
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.msi
+EXIST: 智能app/水利一张图/内部版/3.56/Windows/水利工程基础信息一张图_Setup.exe
+EXIST: 智能app/水利一张图/内部版/3.56/Windows/水利工程基础信息一张图_Setup.msi
+EXIST: 智能app/水利感知项目一张图/内部版/1.32/Windows/水利感知项目一张图_Setup.exe
+EXIST: 智能app/水利感知项目一张图/内部版/1.32/Windows/水利感知项目一张图_Setup.msi
+SKIP(非双通道归档): 四端安装包_20260905_v356_int_oldurl_废弃
+[归档] 四端安装包_20260905_v357_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v357_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v358_int → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7.4_20260905.apk
+EXIST: 智能app/水利一张图/内部版/3.58/Android/水利工程一张图V3.58_20260905.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.34/Android/水利感知项目一张图V1.34_20260905.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.4_20260905_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.58/iOS/水利工程一张图_iOS_3.58_20260905_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.34/iOS/水利感知项目一张图_iOS_1.34_20260905_可托管.zip
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.4.20260905_amd64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.4.20260905_arm64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.4.20260905_loongarch64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.4.20260905_mips64el.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.34/UOS/shuili-ganzhi_1.34.20260905_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.34/UOS/shuili-ganzhi_1.34.20260905_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.34/UOS/shuili-ganzhi_1.34.20260905_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.34/UOS/shuili-ganzhi_1.34.20260905_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.58/UOS/shuili-map_3.58.20260905_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.58/UOS/shuili-map_3.58.20260905_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.58/UOS/shuili-map_3.58.20260905_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.58/UOS/shuili-map_3.58.20260905_mips64el.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.exe
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.msi
+EXIST: 智能app/水利一张图/内部版/3.58/Windows/水利工程基础信息一张图_Setup.exe
+EXIST: 智能app/水利一张图/内部版/3.58/Windows/水利工程基础信息一张图_Setup.msi
+EXIST: 智能app/水利感知项目一张图/内部版/1.34/Windows/水利感知项目一张图_Setup.exe
+EXIST: 智能app/水利感知项目一张图/内部版/1.34/Windows/水利感知项目一张图_Setup.msi
+[归档] 四端安装包_20260907_v359_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260907_v359_pub（不得上传泄漏版，请先重新置空密钥）
+SKIP(非双通道归档): 四端安装包_20260907_v359_pub_winfix
+[归档] 四端安装包_20260907_v360_int → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7.5_20260907.apk
+EXIST: 智能app/水利一张图/内部版/3.60/Android/水利工程一张图V3.60_20260907.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/Android/水利感知项目一张图V1.36_20260907.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.5_20260907_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.60/iOS/水利工程一张图_iOS_3.60_20260907_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/iOS/水利感知项目一张图_iOS_1.36_20260907_可托管.zip
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.5.20260907_amd64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.5.20260907_arm64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.5.20260907_loongarch64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.5.20260907_mips64el.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/UOS/shuili-ganzhi_1.36.20260907_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/UOS/shuili-ganzhi_1.36.20260907_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/UOS/shuili-ganzhi_1.36.20260907_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/UOS/shuili-ganzhi_1.36.20260907_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_mips64el.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.exe
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.msi
+EXIST: 智能app/水利一张图/内部版/3.60/Windows/水利工程基础信息一张图_Setup.exe
+EXIST: 智能app/水利一张图/内部版/3.60/Windows/水利工程基础信息一张图_Setup.msi
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/Windows/水利感知项目一张图_Setup.exe
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/Windows/水利感知项目一张图_Setup.msi
+[归档] 测试包_20260907_ovkmz修复_int → 通道=内部版
+EXIST: 智能app/水利一张图/内部版/3.60/Android/水利工程一张图V3.60_20260907_ovkmz修复.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/Android/水利感知项目一张图V1.36_20260907_ovkmz修复.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.5_20260907_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.60/iOS/水利工程一张图_iOS_3.60_20260907_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/iOS/水利感知项目一张图_iOS_1.36_20260907_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/UOS/shuili-ganzhi_1.36.20260907_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/UOS/shuili-ganzhi_1.36.20260907_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/UOS/shuili-ganzhi_1.36.20260907_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/UOS/shuili-ganzhi_1.36.20260907_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_mips64el.deb
+[归档] 测试包_20260908_v2_int → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7.6_20260908.apk
+EXIST: 智能app/水利一张图/内部版/3.62/Android/水利工程一张图V3.62_20260908.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/Android/水利感知项目一张图V1.38_20260908.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.6_20260908_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.62/iOS/水利工程一张图_iOS_3.62_20260908_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/iOS/水利感知项目一张图_iOS_1.38_20260908_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/UOS/shuili-ganzhi_1.38.20260908_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/UOS/shuili-ganzhi_1.38.20260908_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/UOS/shuili-ganzhi_1.38.20260908_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/UOS/shuili-ganzhi_1.38.20260908_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.62/UOS/shuili-map_3.62.20260908_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.62/UOS/shuili-map_3.62.20260908_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.62/UOS/shuili-map_3.62.20260908_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.62/UOS/shuili-map_3.62.20260908_mips64el.deb
+[归档] 测试包_20260908_v3_int → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7.6_20260908.apk
+EXIST: 智能app/水利一张图/内部版/3.62/Android/水利工程一张图V3.62_20260908.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/Android/水利感知项目一张图V1.38_20260908.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.6_20260908_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.62/iOS/水利工程一张图_iOS_3.62_20260908_可托管.zip
+EXIST: 智能app/水利一张图/公开版/3.63/iOS/水利工程一张图_iOS_3.63_20260908_公开_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/iOS/水利感知项目一张图_iOS_1.38_20260908_可托管.zip
+EXIST: 智能app/水利感知项目一张图/公开版/1.39/iOS/水利感知项目一张图_iOS_1.39_20260908_公开_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/UOS/shuili-ganzhi_1.38.20260908_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/UOS/shuili-ganzhi_1.38.20260908_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/UOS/shuili-ganzhi_1.38.20260908_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.38/UOS/shuili-ganzhi_1.38.20260908_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.62/UOS/shuili-map_3.62.20260908_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.62/UOS/shuili-map_3.62.20260908_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.62/UOS/shuili-map_3.62.20260908_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.62/UOS/shuili-map_3.62.20260908_mips64el.deb
+[归档] 测试包_20260908_v4_int → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7.7_20260908.apk
+EXIST: 智能app/水利一张图/内部版/3.64/Android/水利工程一张图V3.64_20260908.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.40/Android/水利感知项目一张图V1.40_20260908.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.7_20260908_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.64/iOS/水利工程一张图_iOS_3.64_20260908_内部加密_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.64/iOS/水利工程一张图_iOS_3.64_20260908_可托管.zip
+EXIST: 智能app/水利一张图/公开版/3.65/iOS/水利工程一张图_iOS_3.65_20260908_公开_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.40/iOS/水利感知项目一张图_iOS_1.40_20260908_内部加密_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.40/iOS/水利感知项目一张图_iOS_1.40_20260908_可托管.zip
+EXIST: 智能app/水利感知项目一张图/公开版/1.41/iOS/水利感知项目一张图_iOS_1.41_20260908_公开_可托管.zip
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.7.20260908_amd64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.7.20260908_arm64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.7.20260908_loongarch64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.7.20260908_mips64el.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.40/UOS/shuili-ganzhi_1.40.20260908_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.40/UOS/shuili-ganzhi_1.40.20260908_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.40/UOS/shuili-ganzhi_1.40.20260908_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.40/UOS/shuili-ganzhi_1.40.20260908_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.64/UOS/shuili-map_3.64.20260908_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.64/UOS/shuili-map_3.64.20260908_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.64/UOS/shuili-map_3.64.20260908_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.64/UOS/shuili-map_3.64.20260908_mips64el.deb
+[归档] 测试包_20260908_修复_int → 通道=内部版
+EXIST: 智能app/水利一张图/内部版/3.60/Android/水利工程一张图V3.60_20260908_修复.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.36/Android/水利感知项目一张图V1.36_20260908_修复.apk
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.60/UOS/shuili-map_3.60.20260907_mips64el.deb
+[归档] 测试包_20260909_v5_int → 通道=内部版
+EXIST: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7.8_20260909.apk
+EXIST: 智能app/水利一张图/内部版/3.66/Android/水利工程一张图V3.66_20260909.apk
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/Android/水利感知项目一张图V1.42_20260909.apk
+EXIST: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.8_20260909_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.66/iOS/水利工程一张图_iOS_3.66_20260909_内部加密_可托管.zip
+EXIST: 智能app/水利一张图/内部版/3.66/iOS/水利工程一张图_iOS_3.66_20260909_可托管.zip
+EXIST: 智能app/水利一张图/公开版/3.67/iOS/水利工程一张图_iOS_3.67_20260909_公开_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/iOS/水利感知项目一张图_iOS_1.42_20260909_内部加密_可托管.zip
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/iOS/水利感知项目一张图_iOS_1.42_20260909_可托管.zip
+EXIST: 智能app/水利感知项目一张图/公开版/1.43/iOS/水利感知项目一张图_iOS_1.43_20260909_公开_可托管.zip
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.8.20260909_amd64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.8.20260909_arm64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.8.20260909_loongarch64.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.8.20260909_mips64el.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/UOS/shuili-ganzhi_1.42.20260909_amd64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/UOS/shuili-ganzhi_1.42.20260909_arm64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/UOS/shuili-ganzhi_1.42.20260909_loongarch64.deb
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/UOS/shuili-ganzhi_1.42.20260909_mips64el.deb
+EXIST: 智能app/水利一张图/内部版/3.66/UOS/shuili-map_3.66.20260909_amd64.deb
+EXIST: 智能app/水利一张图/内部版/3.66/UOS/shuili-map_3.66.20260909_arm64.deb
+EXIST: 智能app/水利一张图/内部版/3.66/UOS/shuili-map_3.66.20260909_loongarch64.deb
+EXIST: 智能app/水利一张图/内部版/3.66/UOS/shuili-map_3.66.20260909_mips64el.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.exe
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.msi
+EXIST: 智能app/水利一张图/内部版/3.66/Windows/水利工程基础信息一张图_Setup.exe
+EXIST: 智能app/水利一张图/内部版/3.66/Windows/水利工程基础信息一张图_Setup.msi
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/Windows/水利感知项目一张图_Setup.exe
+EXIST: 智能app/水利感知项目一张图/内部版/1.42/Windows/水利感知项目一张图_Setup.msi
+[归档] 测试包_20260910_v6_int → 通道=内部版
+UPLOAD: 智能app/古建景点打卡/内部版/3.7/Android/古建景点打卡V3.7.9_20260910.apk
+UPLOAD: 智能app/水利一张图/内部版/3.68/Android/水利工程一张图V3.68_20260910.apk
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/Android/水利感知项目一张图V1.44_20260910.apk
+UPLOAD: 智能app/古建景点打卡/内部版/3.7/iOS/古建景点打卡_iOS_3.7.9_20260910_可托管.zip
+  FAIL: d:/Users/Claw/APK归档/测试包_20260910_v6_int/ios/古建景点打卡_iOS_3.7.9_20260910_可托管.zip
+UPLOAD: 智能app/水利一张图/内部版/3.68/iOS/水利工程一张图_iOS_3.68_20260910_内部加密_可托管.zip
+UPLOAD: 智能app/水利一张图/内部版/3.68/iOS/水利工程一张图_iOS_3.68_20260910_可托管.zip
+UPLOAD: 智能app/水利一张图/公开版/3.69/iOS/水利工程一张图_iOS_3.69_20260910_公开_可托管.zip
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/iOS/水利感知项目一张图_iOS_1.44_20260910_内部加密_可托管.zip
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/iOS/水利感知项目一张图_iOS_1.44_20260910_可托管.zip
+UPLOAD: 智能app/水利感知项目一张图/公开版/1.45/iOS/水利感知项目一张图_iOS_1.45_20260910_公开_可托管.zip
+UPLOAD: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.9.20260910_amd64.deb
+UPLOAD: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.9.20260910_arm64.deb
+UPLOAD: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.9.20260910_loongarch64.deb
+UPLOAD: 智能app/古建景点打卡/内部版/3.7/UOS/gujian-map_3.7.9.20260910_mips64el.deb
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/UOS/shuili-ganzhi_1.44.20260910_amd64.deb
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/UOS/shuili-ganzhi_1.44.20260910_arm64.deb
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/UOS/shuili-ganzhi_1.44.20260910_loongarch64.deb
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/UOS/shuili-ganzhi_1.44.20260910_mips64el.deb
+UPLOAD: 智能app/水利一张图/内部版/3.68/UOS/shuili-map_3.68.20260910_amd64.deb
+UPLOAD: 智能app/水利一张图/内部版/3.68/UOS/shuili-map_3.68.20260910_arm64.deb
+UPLOAD: 智能app/水利一张图/内部版/3.68/UOS/shuili-map_3.68.20260910_loongarch64.deb
+UPLOAD: 智能app/水利一张图/内部版/3.68/UOS/shuili-map_3.68.20260910_mips64el.deb
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.exe
+EXIST: 智能app/古建景点打卡/内部版/3.7/Windows/古建景点打卡_Setup.msi
+UPLOAD: 智能app/水利一张图/内部版/3.68/Windows/水利工程基础信息一张图_Setup.exe
+UPLOAD: 智能app/水利一张图/内部版/3.68/Windows/水利工程基础信息一张图_Setup.msi
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/Windows/水利感知项目一张图_Setup.exe
+UPLOAD: 智能app/水利感知项目一张图/内部版/1.44/Windows/水利感知项目一张图_Setup.msi
+--- 同步B：工程源备份到 智能app/项目备份/20260910 ---
+  EXIST(今日已备份): android-build
+  EXIST(今日已备份): native-shell
+  EXIST(今日已备份): travel/android
+UPLOAD: 智能app/项目备份/20260910/双通道奇偶发版与信息脱敏策略.md/双通道奇偶发版与信息脱敏策略.md
+--- 公开版分享链接 ---
+  已分享: 智能app/水利一张图/公开版/3.49
+  已分享: 智能app/水利一张图/公开版/3.59
+  已分享: 智能app/水利一张图/公开版/3.63
+  已分享: 智能app/水利一张图/公开版/3.65
+  已分享: 智能app/水利一张图/公开版/3.67
+智能app/水利一张图/公开版/3.69 | {
+  "link": "https://pan.baidu.com/s/1rsg2g6pbxW3SZV9SsMWc9A",
+  "short_url": "rsg2g6pbxW3SZV9SsMWc9A",
+  "share_id": 6744029273,
+  "period": 7,
+  "pwd": "8ry9"
+}
+  分享: 智能app/水利一张图/公开版/3.69
+  已分享: 智能app/古建景点打卡/公开版/3.7
+  已分享: 智能app/古建景点打卡/公开版/3.7.5
+  已分享: 智能app/古建景点打卡/公开版/3.7.8
+  已分享: 智能app/水利感知项目一张图/公开版/1.25
+  已分享: 智能app/水利感知项目一张图/公开版/1.35
+  已分享: 智能app/水利感知项目一张图/公开版/1.39
+  已分享: 智能app/水利感知项目一张图/公开版/1.41
+  已分享: 智能app/水利感知项目一张图/公开版/1.43
+智能app/水利感知项目一张图/公开版/1.45 | {
+  "link": "https://pan.baidu.com/s/1jzc1wasd6uWyNlrdSh4U3w",
+  "short_url": "jzc1wasd6uWyNlrdSh4U3w",
+  "share_id": 66894256673,
+  "period": 7,
+  "pwd": "k773"
+}
+  分享: 智能app/水利感知项目一张图/公开版/1.45
+===== 双同步结束 Thu Sep 10 17:50:46 CST 2026 （NEW=1）=====
+===== 双同步结束 Thu Sep 10 17:50:46 CST 2026 （NEW=1）=====
+===== 双同步开始 Fri Sep 11 09:02:16 CST 2026 =====
+--- 同步A：扫描本地归档 ---
+[归档] 四端安装包_20260901_v348 → 通道=内部版
+[归档] 四端安装包_20260903_v349_pub → 通道=公开版
+  ✓ 门禁 PASS
+[归档] 四端安装包_20260903_v350_int → 通道=内部版
+[归档] 四端安装包_20260905_v355_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v355_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v356_int → 通道=内部版
+[归档] 四端安装包_20260905_v357_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v357_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v358_int → 通道=内部版
+[归档] 四端安装包_20260907_v359_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260907_v359_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260907_v360_int → 通道=内部版
+[归档] 测试包_20260907_ovkmz修复_int → 通道=内部版
+[归档] 测试包_20260908_v2_int → 通道=内部版
+[归档] 测试包_20260908_v3_int → 通道=内部版
+[归档] 测试包_20260908_v4_int → 通道=内部版
+[归档] 测试包_20260908_修复_int → 通道=内部版
+[归档] 测试包_20260909_v5_int → 通道=内部版
+[归档] 测试包_20260910_v6_int → 通道=内部版
+--- 同步B：工程源备份到 智能app/项目备份/20260911 ---
+--- 公开版分享链接 ---
+===== 双同步结束 Fri Sep 11 09:07:38 CST 2026 （NEW=1）=====
+===== 双同步开始 Fri Sep 11 13:17:02 CST 2026 =====
+--- 同步A：扫描本地归档 ---
+[归档] 四端安装包_20260901_v348 → 通道=内部版
+[归档] 四端安装包_20260903_v349_pub → 通道=公开版
+  ✓ 门禁 PASS
+[归档] 四端安装包_20260903_v350_int → 通道=内部版
+[归档] 四端安装包_20260905_v355_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v355_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v356_int → 通道=内部版
+[归档] 四端安装包_20260905_v357_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v357_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v358_int → 通道=内部版
+[归档] 四端安装包_20260907_v359_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260907_v359_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260907_v360_int → 通道=内部版
+[归档] 测试包_20260907_ovkmz修复_int → 通道=内部版
+[归档] 测试包_20260908_v2_int → 通道=内部版
+[归档] 测试包_20260908_v3_int → 通道=内部版
+[归档] 测试包_20260908_v4_int → 通道=内部版
+[归档] 测试包_20260908_修复_int → 通道=内部版
+[归档] 测试包_20260909_v5_int → 通道=内部版
+[归档] 测试包_20260910_v6_int → 通道=内部版
+[归档] 测试包_20260911_v7_int → 通道=内部版
+--- 同步B：工程源备份到 智能app/项目备份/20260911 ---
+--- 公开版分享链接 ---
+===== 双同步结束 Fri Sep 11 13:26:12 CST 2026 （NEW=1）=====
+===== 双同步开始 Fri Sep 11 14:40:17 CST 2026 =====
+--- 同步A：扫描本地归档 ---
+[归档] 四端安装包_20260901_v348 → 通道=内部版
+[归档] 四端安装包_20260903_v349_pub → 通道=公开版
+  ✓ 门禁 PASS
+[归档] 四端安装包_20260903_v350_int → 通道=内部版
+[归档] 四端安装包_20260905_v355_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v355_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v356_int → 通道=内部版
+[归档] 四端安装包_20260905_v357_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v357_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v358_int → 通道=内部版
+[归档] 四端安装包_20260907_v359_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260907_v359_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260907_v360_int → 通道=内部版
+[归档] 测试包_20260907_ovkmz修复_int → 通道=内部版
+[归档] 测试包_20260908_v2_int → 通道=内部版
+[归档] 测试包_20260908_v3_int → 通道=内部版
+[归档] 测试包_20260908_v4_int → 通道=内部版
+[归档] 测试包_20260908_修复_int → 通道=内部版
+[归档] 测试包_20260909_v5_int → 通道=内部版
+[归档] 测试包_20260910_v6_int → 通道=内部版
+[归档] 测试包_20260911_v7_int → 通道=内部版
+[归档] 测试包_20260911_v8_int → 通道=内部版
+--- 同步B：工程源备份到 智能app/项目备份/20260911 ---
+--- 公开版分享链接 ---
+===== 双同步结束 Fri Sep 11 14:47:38 CST 2026 （NEW=1）=====
+===== 双同步开始 Fri Sep 11 15:15:28 CST 2026 =====
+--- 同步A：扫描本地归档 ---
+[归档] 四端安装包_20260901_v348 → 通道=内部版
+[归档] 四端安装包_20260903_v349_pub → 通道=公开版
+  ✓ 门禁 PASS
+[归档] 四端安装包_20260903_v350_int → 通道=内部版
+[归档] 四端安装包_20260905_v355_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v355_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v356_int → 通道=内部版
+[归档] 四端安装包_20260905_v357_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v357_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v358_int → 通道=内部版
+[归档] 四端安装包_20260907_v359_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260907_v359_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260907_v360_int → 通道=内部版
+[归档] 测试包_20260907_ovkmz修复_int → 通道=内部版
+[归档] 测试包_20260908_v2_int → 通道=内部版
+[归档] 测试包_20260908_v3_int → 通道=内部版
+[归档] 测试包_20260908_v4_int → 通道=内部版
+[归档] 测试包_20260908_修复_int → 通道=内部版
+[归档] 测试包_20260909_v5_int → 通道=内部版
+[归档] 测试包_20260910_v6_int → 通道=内部版
+[归档] 测试包_20260911_v7_int → 通道=内部版
+[归档] 测试包_20260911_v8_int → 通道=内部版
+[归档] 测试包_20260911_v9_int → 通道=内部版
+--- 同步B：工程源备份到 智能app/项目备份/20260911 ---
+--- 公开版分享链接 ---
+===== 双同步结束 Fri Sep 11 15:24:25 CST 2026 （NEW=1）=====
+===== 双同步开始 Sat Sep 12 09:04:17 CST 2026 =====
+--- 同步A：扫描本地归档 ---
+[归档] 四端安装包_20260901_v348 → 通道=内部版
+[归档] 四端安装包_20260903_v349_pub → 通道=公开版
+  ✓ 门禁 PASS
+[归档] 四端安装包_20260903_v350_int → 通道=内部版
+[归档] 四端安装包_20260905_v355_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v355_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v356_int → 通道=内部版
+[归档] 四端安装包_20260905_v357_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260905_v357_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260905_v358_int → 通道=内部版
+[归档] 四端安装包_20260907_v359_pub → 通道=公开版
+  ✗ 门禁 FAIL：跳过公开归档 四端安装包_20260907_v359_pub（不得上传泄漏版，请先重新置空密钥）
+[归档] 四端安装包_20260907_v360_int → 通道=内部版
+[归档] 测试包_20260907_ovkmz修复_int → 通道=内部版
+[归档] 测试包_20260908_v2_int → 通道=内部版
+[归档] 测试包_20260908_v3_int → 通道=内部版
+[归档] 测试包_20260908_v4_int → 通道=内部版
+[归档] 测试包_20260908_修复_int → 通道=内部版
+[归档] 测试包_20260909_v5_int → 通道=内部版
+[归档] 测试包_20260910_v6_int → 通道=内部版
+[归档] 测试包_20260911_v7_int → 通道=内部版
+[归档] 测试包_20260911_v8_int → 通道=内部版
+[归档] 测试包_20260911_v9_int → 通道=内部版
+--- 同步B：工程源备份到 智能app/项目备份/20260912 ---
+--- 公开版分享链接 ---
+===== 双同步结束 Sat Sep 12 09:10:39 CST 2026 （NEW=1）=====

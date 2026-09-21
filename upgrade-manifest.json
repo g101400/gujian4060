@@ -1,0 +1,39 @@
+{
+  "format": "yitu-upgrade-manifest",
+  "schema": 1,
+  "updatedAt": "2026-09-04",
+  "note": "本升级清单托管于百度网盘，由打包流水线在每次发版时更新。各应用「设置 → 软件升级（检测新版）」读取此清单进行版本比对。",
+  "apps": {
+    "gujian": {
+      "single": {
+        "version": "3.7.1",
+        "note": "古建景点打卡 v3.7.1：新增升级数据导出/导入、软件升级检测（检测新版）。",
+        "url": "https://pan.baidu.com/s/1XvHT0uVNlS8wc_1r_6RgqQ?pwd=bod2"
+      }
+    },
+    "perc": {
+      "public": {
+        "version": "1.27",
+        "note": "水利感知项目一张图 公开版 v1.27。",
+        "url": "https://pan.baidu.com/s/1XvHT0uVNlS8wc_1r_6RgqQ?pwd=bod2"
+      },
+      "internal": {
+        "version": "1.28",
+        "note": "水利感知项目一张图 内部版 v1.28（含内部数据，仅内部通道）。",
+        "url": "https://pan.baidu.com/s/1XvHT0uVNlS8wc_1r_6RgqQ?pwd=bod2"
+      }
+    },
+    "shuili": {
+      "public": {
+        "version": "3.51",
+        "note": "水利工程基础信息一张图 对外版 v3.51。",
+        "url": "https://pan.baidu.com/s/1XvHT0uVNlS8wc_1r_6RgqQ?pwd=bod2"
+      },
+      "internal": {
+        "version": "3.52",
+        "note": "水利工程基础信息一张图 内部版 v3.52（含内部数据，仅内部通道）。",
+        "url": "https://pan.baidu.com/s/1XvHT0uVNlS8wc_1r_6RgqQ?pwd=bod2"
+      }
+    }
+  }
+}

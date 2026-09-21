@@ -1,0 +1,48 @@
+# ===== 私有密钥（切勿入库/切勿推到公开仓库）=====
+# ai_seed.js 含个人 OpenRouter Key，已被故意忽略。
+# 首次克隆后执行：cp assets/ai_seed.demo.js assets/ai_seed.js 并自行填写 Key。
+assets/ai_seed.js
+
+# ===== 备份与临时文件 =====
+assets_bak_*/
+*_bak_*/
+*.flickbak
+*.bak
+__pycache__/
+*.pyc
+
+# ===== 安装包 / 压缩包（出包产物，不入库）=====
+*.apk
+*.zip
+
+# ===== 原生壳（Win/UOS）构建产物 / 备份 / 打包输出：不入库 =====
+# webroot 是 assets/ 的构建期拷贝（含 OCR wasm），由各壳的构建脚本从 assets/ 同步生成，勿提交
+native-shell/**/webroot/
+native-shell/**/webroot_bak_*/
+native-shell/win-gujian-webview2/bin/
+native-shell/win-gujian-webview2/obj/
+native-shell/win-gujian-webview2/publish*/
+
+# ===== 古建 Android 原生壳：构建产物 / 签名 / 编译物 / 备份（不入库）=====
+native-shell/android-gujian/assets/      # 与仓库根 assets/ 同源，构建期拷贝
+native-shell/android-gujian/bin/
+native-shell/android-gujian/build/
+native-shell/android-gujian/*.jks        # 签名密钥，严禁入库
+native-shell/android-gujian/*.apk
+native-shell/android-gujian/*.idsig
+native-shell/android-gujian/*.class
+native-shell/android-gujian/*.dex
+native-shell/android-gujian/res_compiled.zip
+
+# ===== 古建 iOS 打包产物（可托管 zip，不入库；PWA 壳 pwa-shell/ 入库）=====
+native-shell/gujian-ios/apple-package/
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db
+
+# ===== 本地 GitHub Token（仅本机持有，被忽略，绝不入库）=====
+# 把 PAT 写入仓库根 .gujian_token（或 .env 里 GUJIAN_GITHUB_TOKEN=xxx），脚本自动读取。
+# 切勿把真实 token 写进任何会被提交的脚本/文档里。
+.gujian_token
+.env

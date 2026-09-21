@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "time": "20260902_000501",
+  "msg": "备份成功: 10 件 + 根脚本 59 个 -> D:\\Users\\Claw\\_backup_live\\Claw_backup_20260902_000501 (fallback(D:本地, 因首选不可达))",
+  "detail": {
+    "target": "D:\\Users\\Claw\\_backup_live",
+    "dest": "D:\\Users\\Claw\\_backup_live\\Claw_backup_20260902_000501",
+    "copied": 10,
+    "scripts": 59
+  }
+}

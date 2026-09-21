@@ -1,0 +1,17 @@
+{
+  "app": "shuili",
+  "appName": "水利工程一张图",
+  "updatedAt": "2026-09-05",
+  "channels": {
+    "public": {
+      "version": "3.57",
+      "note": "修复安卓端升级菜单「下载更新包」点击报错：改由系统浏览器/网盘App接管打开（Win/iOS 不受影响）",
+      "url": "https://pan.baidu.com/s/1v0ECWtD2bRl5TOsRXSESYg?pwd=a4np"
+    },
+    "internal": {
+      "version": "3.58",
+      "note": "内部版 3.58（完整单位内部数据，仅限单位内部）：修复安卓端升级菜单「下载更新包」点击报错：改由系统浏览器/网盘App接管打开",
+      "url": "https://pan.baidu.com/s/1iSNvMaOZzXVnQz66_nqb2w?pwd=ytob"
+    }
+  }
+}
