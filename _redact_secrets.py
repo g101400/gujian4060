@@ -284,7 +284,9 @@ def main():
             if GH_TOKEN.search(s):
                 s = GH_TOKEN.sub("github_pat_REDACTED", s)
             if PEM_KEY.search(s):
-                s = PEM_KEY.sub("-----BEGIN REDACTED PRIVATE KEY-----", s)
+                # 占位串刻意不含 "BEGIN <...>PRIVATE KEY" 字面形态，
+                # 否则后续用 grep 扫 PEM 私钥时本文件会自命中（误报）。
+                s = PEM_KEY.sub("-----BEGIN-PRIVATE-KEY-REDACTED-----", s)
             if s != orig:
                 write(fp, s)
                 changed += 1
