@@ -7,9 +7,16 @@ _redact_secrets.py — 从仓库树中移除硬编码密钥（供 git filter-bra
   1. swap_key.js      : OLD/NEW 改为读环境变量
   2. test_models.js   : KEY 改为读环境变量
   3. verify_rebuilt_data.py : NEW_KEY 改为先读 CLI/env，再读本地 .secrets/，都没有则跳过校验
-  4. 兜底：任何残留的完整 sk-or-v1-<64> / github_pat_* / PEM 私钥 → REDACTED
-  5. 凭据落盘文件（*.gujian_token，非 .example）→ 原地清空为占位内容
-  6. .gitignore 追加忽略规则
+  4. 其它 .py：内部加密 PWA 口令 SEC_PASS 的**硬编码默认值** → 改为
+     「环境变量 → 同目录 .sec_pass → 缺失则 FATAL 退出」（项目规范）
+  5. 兜底：任何残留的完整 sk-or-v1-<64> / github_pat_* / PEM 私钥 → REDACTED
+  6. 凭据落盘文件（*.gujian_token，非 .example）→ 原地清空为占位内容
+  7. .gitignore 追加忽略规则（含 *.sec_pass / .secrets/）
+
+注：`.sec_pass`（本地口令文件）本脚本**不清空内容**（会破坏本地构建），
+    只把它加进 .gitignore；若它已被入库，用 index-filter 从历史剥离：
+      git filter-branch -f --index-filter \
+        'git rm --cached --ignore-unmatch -q native-shell/water-ios/.sec_pass' -- main
 
 安全边界（重要）：
   默认**只处理 git 已跟踪的文件**。因为仓库里常有一份未跟踪的**本地凭据文件**
@@ -49,6 +56,26 @@ PEM_KEY = re.compile(
 TOKEN_FILE_SUFFIXES = (".gujian_token",)
 TOKEN_FILE_KEEP = (".example",)
 
+# 内部加密 PWA 口令：源码里不得出现默认值（必须走 env / 本地 .sec_pass）
+# 注意：下面的正则不能在「本文件自身」里命中，否则会把文档示例当代码替换（已踩过）。
+SEC_PASS_DEFAULT = re.compile(
+    r'os\.environ\.get\(\s*(["\'])SEC_PASS\1\s*,\s*(["\'])[^"\']+\2\s*\)'
+)
+# 合规写法：环境变量 → 同目录 .sec_pass → 都没有则 FATAL 退出
+SEC_PASS_OK = (
+    '(os.environ.get("SEC_PASS")\n'
+    '           or (open(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".sec_pass"),\n'
+    '                    encoding="utf-8").read().strip()\n'
+    '               if os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)),'
+    ' ".sec_pass")) else ""))'
+)
+SEC_PASS_FATAL = (
+    "\nif not PASS:\n"
+    "    sys.exit(\"[FATAL] 未提供内部口令：请设置环境变量 SEC_PASS，"
+    "或在脚本同目录创建 .sec_pass 文件。\")\n"
+)
+SELF = "_redact_secrets.py"
+
 IGNORE_LINES = [
     "native-shell/nsis_check/",
     "**/nsis_check/",
@@ -57,6 +84,9 @@ IGNORE_LINES = [
     "secrets.local.json",
     "*.gujian_token",
     "**/.gujian_token",
+    ".sec_pass",
+    "**/.sec_pass",
+    "*.sec_pass",
 ]
 
 
@@ -181,6 +211,35 @@ def main():
                 s = "import os\n" + s
             write(p, s)
             changed += 1
+
+    # 4b) 内部加密 PWA 口令（.sec_pass）不得以默认值形式写在源码里。
+    #     项目规范：环境变量 SEC_PASS → 同目录本地 .sec_pass → 缺失则 FATAL。
+    #     老版本脚本曾把 4 位口令写成环境变量取值的默认参数，等于随源码公开口令。
+    targets = sorted(_TRACKED) if _TRACKED else None
+    if targets is None:
+        targets = []
+        for root, dirs, files in os.walk("."):
+            dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
+            for fn in files:
+                if fn.endswith(".py"):
+                    targets.append(os.path.relpath(os.path.join(root, fn), ".")
+                                   .replace("\\", "/"))
+    for rel in targets:
+        if rel.endswith("/" + SELF) or rel == SELF:
+            continue  # 本文件是清洗工具本身，跳过（防自匹配）
+        if not rel.endswith(".py") or not os.path.isfile(rel):
+            continue
+        s = read(rel)
+        if not SEC_PASS_DEFAULT.search(s):
+            continue
+        s2 = SEC_PASS_DEFAULT.sub(lambda _m: SEC_PASS_OK, s)
+        if "FATAL" not in s2:
+            s2 = s2.replace("PASS = " + SEC_PASS_OK,
+                            "PASS = " + SEC_PASS_OK + SEC_PASS_FATAL, 1)
+        if s2 != s:
+            write(rel, s2)
+            changed += 1
+            print("  scrubbed SEC_PASS default: %s" % rel, file=sys.stderr)
 
     # 5) 兜底：其它任何文件里的完整 key / token 字面量
     removed = 0
