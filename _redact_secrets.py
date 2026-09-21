@@ -4,20 +4,34 @@
 _redact_secrets.py — 从仓库树中移除硬编码密钥（供 git filter-branch --tree-filter 调用）
 
 作用（幂等，可对任意 commit 的树重复执行）：
-  1. 删除 native-shell/nsis_check/（NSIS 安装包解包校验残留，56MB，内含带 key 的产物副本）
-  2. swap_key.js      : OLD/NEW 改为读环境变量
-  3. test_models.js   : KEY 改为读环境变量
-  4. verify_rebuilt_data.py : NEW_KEY 改为读环境变量（默认占位）
-  5. 兜底：任何残留的完整 sk-or-v1-<64> 字面量替换为 sk-or-v1-REDACTED
+  1. swap_key.js      : OLD/NEW 改为读环境变量
+  2. test_models.js   : KEY 改为读环境变量
+  3. verify_rebuilt_data.py : NEW_KEY 改为先读 CLI/env，再读本地 .secrets/，都没有则跳过校验
+  4. 兜底：任何残留的完整 sk-or-v1-<64> / github_pat_* / PEM 私钥 → REDACTED
+  5. 凭据落盘文件（*.gujian_token，非 .example）→ 原地清空为占位内容
   6. .gitignore 追加忽略规则
 
+安全边界（重要）：
+  默认**只处理 git 已跟踪的文件**。因为仓库里常有一份未跟踪的**本地凭据文件**
+  （如 android-build/*/.gujian_token，推送脚本真正在用的那份）：
+  它本来就不会进仓，清空它只会把本地构建/推送脚本搞坏。用 --all 才处理全部文件
+  （仅在非 git 目录、或明确知道无本地凭据文件时使用）。
+
+注：从历史中「移除文件」不在本脚本内做（沙箱批量删除保护会拦截 rmtree）。
+    请用 `git filter-branch --index-filter 'git rm -r --cached --ignore-unmatch <path>'`。
+
 用法（cwd 必须是仓库树根）：
-  python3 /d/Users/WorkBuddy/_redact_secrets.py
+  python3 _redact_secrets.py            # 只清洗已跟踪文件（推荐）
+  python3 _redact_secrets.py --all      # 清洗所有文件（含未跟踪）
+  python3 _redact_secrets.py --dry-run  # 只报告，不改动
 """
 import os
 import re
-import shutil
+import subprocess
 import sys
+
+TRACKED_ONLY = True
+DRY_RUN = False
 
 FULL_KEY = re.compile(r"sk-or-v1-[A-Za-z0-9]{20,}")
 REDACTED = "sk-or-v1-REDACTED"
@@ -38,7 +52,8 @@ TOKEN_FILE_KEEP = (".example",)
 IGNORE_LINES = [
     "native-shell/nsis_check/",
     "**/nsis_check/",
-    "*.secrets/",
+    ".secrets/",
+    "**/.secrets/",
     "secrets.local.json",
     "*.gujian_token",
     "**/.gujian_token",
@@ -51,17 +66,43 @@ def read(p):
 
 
 def write(p, s):
+    if DRY_RUN:
+        print("  [dry-run] 将改写: %s" % p, file=sys.stderr)
+        return
     with open(p, "w", encoding="utf-8", newline="") as f:
         f.write(s)
 
 
-def touch_count():
-    return None
+def tracked_paths():
+    """返回 git 已跟踪文件集合（POSIX 相对路径）；非 git 仓库返回 None。"""
+    try:
+        r = subprocess.run(
+            ["git", "ls-files", "-z"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+    except Exception:
+        return None
+    out = r.stdout.decode("utf-8", "replace")
+    return set(p.replace("\\", "/") for p in out.split("\0") if p)
+
+
+_TRACKED = None
+
+
+def is_target(rel):
+    """当前模式是否应该处理该相对路径。"""
+    if not TRACKED_ONLY or _TRACKED is None:
+        return True
+    return rel in _TRACKED
 
 
 def redact_generic(path, extra_patterns=()):
     """extra_patterns: list of (compiled_regex, replacement)"""
     if not os.path.isfile(path):
+        return 0
+    if not is_target(path.replace("\\", "/")):
         return 0
     s = read(path)
     before = s
@@ -76,6 +117,16 @@ def redact_generic(path, extra_patterns=()):
 
 
 def main():
+    global _TRACKED
+    # 0) 默认只处理 git 已跟踪文件：仓库里常有一份**未跟踪的本地凭据文件**
+    #    （android-build/*/.gujian_token），清空它只会把本地推送/构建脚本搞坏。
+    if TRACKED_ONLY:
+        _TRACKED = tracked_paths()
+        if _TRACKED is None:
+            print("  ! 当前不是 git 仓库：改为处理全部文件", file=sys.stderr)
+        else:
+            print("  tracked-only：git 跟踪 %d 个文件" % len(_TRACKED), file=sys.stderr)
+
     # 1) 注意：native-shell/nsis_check/（解包校验残留）不在本脚本内删除，
     #    因为沙箱“批量删除保护”会拦截 5000+ 文件的 rmtree 并导致 tree-filter 失败。
     #    改为用 --index-filter 的 `git rm -r --cached` 从历史中剥离（不触碰磁盘）。
@@ -96,14 +147,18 @@ def main():
          r'\1process.env.OPENROUTER_KEY || ""'),
     ])
 
-    # 4) verify_rebuilt_data.py — NEW_KEY 读环境变量
+    # 4) verify_rebuilt_data.py — NEW_KEY 改为：CLI/env → 本地 .secrets/ → 跳过
     p = "verify_rebuilt_data.py"
-    if os.path.isfile(p):
+    if os.path.isfile(p) and is_target(p):
         s = read(p)
         orig = s
         s = re.sub(
-            r'(NEW_KEY\s*=\s*)"sk-or-v1-[A-Za-z0-9]+"',
-            r'\1os.environ.get("OPENROUTER_KEY", "%s")' % REDACTED,
+            r'(NEW_KEY\s*=\s*)(?:"sk-or-v1-[A-Za-z0-9]+"'
+            r'|os\.environ\.get\("OPENROUTER_KEY",\s*"sk-or-v1-REDACTED"\))',
+            r'\1(os.environ.get("OPENROUTER_KEY")\n'
+            r'           or (open(os.path.join(ROOT, ".secrets", "openrouter.key"), encoding="utf-8").read().strip()\n'
+            r'               if os.path.isfile(os.path.join(ROOT, ".secrets", "openrouter.key")) else "")\n'
+            r'           or "sk-or-v1-REDACTED")',
             s,
         )
         if FULL_KEY.search(s):
@@ -115,14 +170,14 @@ def main():
                 'if seed is None:\n'
                 '                    print(%s)\n'
                 '                elif NEW_KEY == "%s":\n'
-                '                    print("   – 未设置 OPENROUTER_KEY 环境变量，跳过 key 核验")\n'
+                '                    print("   – 未提供 key（OPENROUTER_KEY 或 .secrets/openrouter.key），跳过 key 核验")\n'
                 '                else:\n'
                 '                    ok(NEW_KEY in seed, %s)'
             ) % (m.group(2), REDACTED, m.group(1)),
             s,
         )
         if s != orig:
-            if "import os" not in s.split("\n\n")[0] and not re.search(r"^import os\b", s, re.M):
+            if not re.search(r"^import os\b", s, re.M):
                 s = "import os\n" + s
             write(p, s)
             changed += 1
@@ -134,6 +189,10 @@ def main():
         for fn in files:
             fp = os.path.join(root, fn)
             rel = os.path.relpath(fp, ".").replace("\\", "/")
+
+            # 只处理 git 已跟踪的文件（见文件头「安全边界」）
+            if not is_target(rel):
+                continue
 
             # 5a) 凭据落盘文件（如 android-build/*/202609080401.gujian_token）：
             #     不删除（沙箱批量删除保护会拦截），改写为占位内容；
@@ -190,4 +249,9 @@ def main():
 
 
 if __name__ == "__main__":
+    args = set(sys.argv[1:])
+    if "--all" in args:
+        TRACKED_ONLY = False
+    if "--dry-run" in args:
+        DRY_RUN = True
     sys.exit(main())
