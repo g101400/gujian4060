@@ -1,123 +1,61 @@
-# ============================================================
-# 安全红线：密钥 / 令牌 / keystore / 本地种子 永不入包、永不进仓库
-# （公开构建会剥离 ai_seed.js；拉取仓库时也绝不覆盖本地密钥）
-# ============================================================
-ai_seed*.js
-**/ai_seed*.js
-ai_seed.local.js
-secrets/
-**/secrets/
-config.local.js
-**/config.local.js
-SECRETS.md
-*.keystore
-**/*.keystore
-keystore/
-**/keystore/
-*.jks
-*.p12
-*.pem
-.env
-**/.env
-*.token
+# ===== 密钥（本地真实值，绝不入库）=====
+secrets/config.local.js
+# 安卓签名 keystore（发布签名凭据，本地持有；公开库仅放路径引用）
+build/targets/keystore/
+# 机器相关配置（sdk.dir 等，本地持有）
+build/targets/android/local.properties
+build/targets/*/.gradle/
 
-# 密钥传播脚本 / 真实密钥备份（含真实 key，绝不入仓）
-.strip_backup/
-propagate_ai_seed*.py
-ai_seed*.js.real.bak
-*.real.bak
-
-# ============================================================
-# 构建产物（APK/deb/exe/msi/zip）单独排期，不进源码仓
-# ============================================================
+# ===== 构建产物 / 安装包 =====
 *.apk
+*.aab
+*.ipa
 *.deb
 *.exe
 *.msi
 *.zip
-APK/
-APK归档/
-APK_*/
-_release_tmp/
+releases/
+build_v24*.log
+.build_v24_ts
+.upload_tmp
+.upload_tmp.done
 dist/
-build/targets/
-**/build/targets/
-apple-package/
-**/apple-package/
-webroot_stage/
+out/
+# 原生壳构建再生内容（由 build/sync_guijian.py 再生，不入版本库）
+build/targets/*/node_modules/
+build/targets/*/release*/
+build/targets/*/.ecache/
+build/targets/*/.npmcache/
+build/targets/win11/jingmi_app/*
+build/targets/uos/jingmi_app/*
+build/targets/android/app/src/main/assets/www/*
+build/targets/android/app/build/
+build/targets/android/.gradle/
+build/targets/ios/gujian_pwa/*
 
-# ============================================================
-# 备份 / 快照（不进仓）
-# ============================================================
-backup_*/
-_backup_*/
-*_bak*/
-assets_bak*/
-.dbg_deb_xz/
-.dbg_deb/
-.pkgverify/
+# ===== 备份 / 日志 / 临时 =====
+*.bak
+*.bak*
+*.log
+.data.real.*
+*.apk_hold
+*._bak_*
+rel_extract*/
 
-# ============================================================
-# 依赖 / 缓存 / 大体积资源
-# ============================================================
-node_modules/
+# ===== Python 缓存（字节码，不入版本库）=====
 __pycache__/
 *.pyc
-CMakeFiles/
-.venv/
-weights/
-*.bin
 
-# ============================================================
-# 本地工作区状态 / 智能体运行时（不进仓）
-# ============================================================
+# ===== 依赖 / 工具 =====
+node_modules/
+.thumbs/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ===== Agent 工作区数据（自动化记忆/日志，属本地运行态，不入版本库）=====
+# 坑 41 同源问题：gujian 此前缺此规则 → 公开仓 g101400/gujian4060 混入
+# .workbuddy/memory/2026-09-07.md 与 automations/*/memory.md，
+# 且每轮同步恒定「更新 1」= 自记忆文件，产生 8 次/日 自噪声 commit（2026-09-14 清理）
 .workbuddy/
-
-# ============================================================
-# 临时 / 测试 / 构建中间产物（不进仓）
-# ============================================================
-_or_test/
-_sim/
-_srvtest/
-**/.stash_*/
-_release_tmp/
-_phaseB_pre_patch_20260824_v347.zip
-CMakeCache.txt
-build.ninja
-build.ninja.tmp*
-CMakeFiles/
-
-# ============================================================
-# 与本三线四平台无关的独立项目 / 大型素材（单独管理，不进本仓）
-#   ai-lab(5.3GB 实验沙盒) / travel(1.3GB 古建打卡克隆) / jingyin(121MB 公众号小程序)
-# ============================================================
-ai-lab/
-travel/
-jingyin/
-weights_20260921_023535/
-
-# ============================================================
-# .NET / Android 构建中间产物（不进仓）
-# ============================================================
-**/bin/
-**/obj/
-**/dex/
-publish_win_*/
-**/publish_win_*/
-publish_v331/
-**/publish_v331/
-publish_*/
-**/publish_*/
-nsis_wb2/
-
-native-shell/nsis_check/
-**/nsis_check/
-*.secrets/
-secrets.local.json
-*.gujian_token
-**/.gujian_token
-.secrets/
-**/.secrets/
-.sec_pass
-**/.sec_pass
-*.sec_pass
