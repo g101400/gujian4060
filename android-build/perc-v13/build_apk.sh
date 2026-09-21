@@ -12,6 +12,9 @@ APKSIGNER="$BT/apksigner.bat"
 
 cd "$HERE"
 # 清理上一轮可能残留的生成产物（TEMP 构建目录下 rm 可用）
+# 必须连 obj/ dex/ 一起清：历史备份会在 obj 里留下 “<类名><日期>.class” 副本，
+# 与正式 class 同属一个类型 -> d8 报 "Type ... is defined multiple times" 而中止。
+"${PY_EXE:-python3}" -c "import shutil;[shutil.rmtree(d,ignore_errors=True) for d in ('obj','dex')]" 2>/dev/null || true
 rm -f res_compiled.zip app-unsigned.apk app-aligned.apk app-release.apk 2>/dev/null || true
 
 PY0="${PY_EXE:-python3}"

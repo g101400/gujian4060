@@ -95,6 +95,21 @@ ai-lab/
 travel/
 jingyin/
 weights_20260921_023535/
+
+# ============================================================
+# .NET / Android 构建中间产物（不进仓）
+# ============================================================
+**/bin/
+**/obj/
+**/dex/
+publish_win_*/
+**/publish_win_*/
+publish_v331/
+**/publish_v331/
+publish_*/
+**/publish_*/
+nsis_wb2/
+
 native-shell/nsis_check/
 **/nsis_check/
 *.secrets/

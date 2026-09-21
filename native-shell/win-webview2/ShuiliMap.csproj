@@ -21,4 +21,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <!-- 排除历史备份 .cs（形如 <原名><12位时间戳>.cs）：默认 glob 会把备份一并编译，
+       与 Program.cs 重复定义类型（CS0111）导致 publish 失败 -->
+  <ItemGroup>
+    <Compile Remove="Program20*.cs" />
+  </ItemGroup>
 </Project>
