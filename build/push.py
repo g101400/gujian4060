@@ -41,9 +41,13 @@ def api(path, method='GET', data=None, _tries=3):
     req.add_header('Accept', 'application/vnd.github+json')
     req.add_header('Content-Type', 'application/json')
     req.add_header('X-GitHub-Api-Version', '2022-11-28')
+    # GitHub API 要求显式 User-Agent，否则高并发时可能连接重置（urllib 默认 UA 偶发被断流）
+    req.add_header('User-Agent', 'gujian-push/1.0')
+    # 关闭传输压缩，规避分块响应下 urllib 偶发的 IncompleteRead 误判
+    req.add_header('Accept-Encoding', 'identity')
     # 重试：覆盖大文件(>1MB)走 git/blobs 时的瞬时断流 IncompleteRead、5xx、URLError、socket 超时/错误
     last = None
-    for attempt in range(_tries):
+    for attempt in range(max(_tries, 4)):
         try:
             with urllib.request.urlopen(req, timeout=180) as r:
                 return r.status, r.read().decode('utf-8', 'replace')
